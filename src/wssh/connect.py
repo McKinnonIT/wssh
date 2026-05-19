@@ -39,6 +39,7 @@ _WARPGATE_TARGET_AUTH_PATTERNS = [
     re.compile(r"warpgate.*target", re.I),
     re.compile(r"could not connect to target", re.I),
     re.compile(r"failed to authenticate.*target", re.I),
+    re.compile(r"rejected Warpgate authentication", re.I),
 ]
 
 
@@ -174,8 +175,13 @@ def run_direct_ssh_capture(
     return result.returncode, result.stdout, result.stderr
 
 
-def format_ssh_hint(stderr: str, *, target: str | None = None) -> str:
-    kind = classify_ssh_failure(stderr)
+def ssh_failure_output(stderr: str, stdout: str = "") -> str:
+    """Combine SSH streams for error classification (OpenSSH may write to either)."""
+    return f"{stderr}\n{stdout}".strip()
+
+
+def format_ssh_hint(stderr: str, *, target: str | None = None, stdout: str = "") -> str:
+    kind = classify_ssh_failure(ssh_failure_output(stderr, stdout))
     if kind == "auth_failure" and target:
         return (
             f"Authentication failed for [bold]{target}[/bold]. Common causes:\n"

@@ -10,23 +10,21 @@ SSH to McKinnon Warpgate targets from your terminal.
 
 ## Quick start
 
+One-liner (installs Python deps, pipx, and wssh):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/McKinnonIT/wssh/main/install.sh | bash
+```
+
+Or install manually:
+
 ```bash
 git clone https://github.com/McKinnonIT/wssh.git
-```
-
-```bash
 cd wssh
-```
 
-```bash
 pipx install .
-```
 
-```bash
 wssh setup
-```
-
-```bash
 wssh dns01
 ```
 

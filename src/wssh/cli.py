@@ -272,12 +272,12 @@ def connect(target: str, ssh_args: list[str]) -> int:
     if code == 0:
         return 0
 
-    _, _, stderr = run_ssh_capture(config, target, ["true"])
-    kind = classify_ssh_failure(stderr)
+    _, stdout, stderr = run_ssh_capture(config, target, ["true"])
+    kind = classify_ssh_failure(f"{stderr}\n{stdout}")
     if maybe_offer_setup(config, target, kind):
         return run_ssh(config, target, ssh_args)
 
-    console.print(format_ssh_hint(stderr, target=target))
+    console.print(format_ssh_hint(stderr, target=target, stdout=stdout))
     return code
 
 
