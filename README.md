@@ -97,20 +97,6 @@ This will (with admin permission):
 
 Requires `targets_create` admin permission on your Warpgate account (or `WSSH_ADMIN_API_TOKEN`).
 
-## Migrating from the old bash wrapper
-
-If you previously ran the old `wssh-setup.sh`, you may still have a **`wssh()` shell function** in `~/.zshrc`. It overrides the pipx binary, so `wssh setup` incorrectly tries to SSH to a host named `setup`.
-
-**Fix:**
-
-1. Remove the block between `# >>> warpgate wssh wrapper >>>` and `# <<< warpgate wssh wrapper <<<` from `~/.zshrc`
-2. `source ~/.zshrc`
-3. Run `wssh doctor` to verify, then `wssh setup`
-
-Until then, use: `command wssh setup` or `~/.local/bin/wssh setup`
-
-`wssh setup` removes the legacy wrapper block and installs completion instead.
-
 ## Warpgate APIs used
 
 **User API** (`https://ssh.mckinnon.tech/@warpgate/api`):
