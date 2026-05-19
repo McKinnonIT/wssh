@@ -12,9 +12,21 @@ SSH to McKinnon Warpgate targets from your terminal.
 
 ```bash
 git clone https://github.com/McKinnonIT/wssh.git
+```
+
+```bash
 cd wssh
+```
+
+```bash
 pipx install .
+```
+
+```bash
 wssh setup
+```
+
+```bash
 wssh dns01
 ```
 
@@ -26,4 +38,8 @@ Run a remote command:
 wssh dns01 -- systemctl status bind9
 ```
 
-If browser SSO fails: `wssh setup --manual-credentials`
+If browser SSO fails:
+
+```bash
+wssh setup --manual-credentials
+```
