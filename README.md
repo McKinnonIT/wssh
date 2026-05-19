@@ -5,13 +5,16 @@ McKinnon Warpgate SSH client — setup, connect, tab completion, and on-demand s
 ## Install
 
 ```bash
+git clone https://github.com/McKinnonIT/wssh.git
+cd wssh
+
 # Recommended: isolated install
 pipx install .
 
-# Or from a clone
+# Or install into the current environment
 pip install .
 
-# Quick bootstrap (installs Python package then runs setup)
+# Quick bootstrap (installs the package then runs setup)
 ./wssh-setup.sh
 ```
 
