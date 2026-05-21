@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Install wssh and dependencies.
 #
-#   curl -fsSL https://raw.githubusercontent.com/McKinnonIT/wssh/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/wssh/main/install.sh | bash
 #
 # Override repo: WSSH_REPO=https://github.com/you/wssh.git bash install.sh
 
 set -euo pipefail
 
-WSSH_REPO="${WSSH_REPO:-https://github.com/McKinnonIT/wssh.git}"
+WSSH_REPO="${WSSH_REPO:-https://github.com/YOUR_ORG/wssh.git}"
 WSSH_GIT_SPEC="git+${WSSH_REPO}"
 
 err() {

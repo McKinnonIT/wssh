@@ -1,0 +1,11 @@
+# Organization preset — non-secret defaults only.
+# Copy to ~/.wssh/config.yaml (or merge) before `wssh setup` so staff skip connection prompts.
+# Do not commit api_token, admin_api_token, or per-user fields in a shared preset.
+
+host: bastion.example.com
+port: 2222
+domain: example.com
+server_domain: internal.example.com
+default_ssh_user: root
+default_ssh_port: 22
+targets_cache_ttl_hours: 24

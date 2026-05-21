@@ -13,7 +13,7 @@ SSH to [Warpgate](https://github.com/warp-tech/warpgate) targets from your termi
 Clone the repository and run the installer:
 
 ```bash
-git clone https://github.com/McKinnonIT/wssh.git
+git clone https://github.com/YOUR_ORG/wssh.git
 cd wssh
 bash install.sh
 wssh setup
@@ -22,16 +22,16 @@ wssh setup
 Or install with pipx only:
 
 ```bash
-git clone https://github.com/McKinnonIT/wssh.git
+git clone https://github.com/YOUR_ORG/wssh.git
 cd wssh
 pipx install .
 wssh setup
 ```
 
-One-liner (after publishing; set `WSSH_REPO` to your fork if needed):
+One-liner (after publishing; set `WSSH_REPO` if installing from a fork):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/McKinnonIT/wssh/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/wssh/main/install.sh | bash
 wssh setup
 ```
 
@@ -79,6 +79,16 @@ Environment variables override file values:
 | `WSSH_WARPGATE_CLIENT_KEYS` | Newline-separated client public keys (offline bootstrap) |
 
 See [`config.example.yaml`](config.example.yaml) for a full template.
+
+## Organization presets
+
+Teams can ship **non-secret** defaults (bastion host, email domain, server DNS suffix, default SSH user) without forking `wssh`:
+
+1. Maintain a partial config (see [`config.preset.example.yaml`](config.preset.example.yaml)) — no `api_token` or per-user `user`.
+2. Install `wssh` and copy the preset to `~/.wssh/config.yaml`.
+3. Run `wssh setup` — connection prompts are skipped when `host` is already set; staff only complete username, SSH key, API token, and shell completion.
+
+Distribute the preset via a private repo and bootstrap script, MDM, or internal wiki. Keep secrets and personal tokens out of shared files.
 
 ## Troubleshooting
 
