@@ -1,14 +1,15 @@
-"""Normalize McKinnon Google Workspace usernames."""
+"""Normalize Warpgate usernames and email addresses."""
 
 from __future__ import annotations
 
 import re
 import subprocess
 
-from wssh.constants import WARPGATE_DOMAIN
 
-
-def git_default_email() -> str:
+def git_default_email(domain: str) -> str:
+    """Return a git-configured email when it matches the configured domain."""
+    if not domain:
+        return ""
     try:
         result = subprocess.run(
             ["git", "config", "--global", "user.email"],
@@ -22,30 +23,34 @@ def git_default_email() -> str:
     if not email:
         return ""
     if "@" in email:
-        local, _, domain = email.partition("@")
-        if domain == WARPGATE_DOMAIN:
+        local, _, addr_domain = email.partition("@")
+        if addr_domain == domain:
             return email
-        if domain and local:
-            return f"{local}@{WARPGATE_DOMAIN}"
+        if addr_domain and local:
+            return f"{local}@{domain}"
     return ""
 
 
-def normalize_email(raw: str, domain: str = WARPGATE_DOMAIN) -> str:
-    """Append @domain when the user omits it (e.g. sam.neal -> sam.neal@domain)."""
+def normalize_email(raw: str, domain: str) -> str:
+    """Append @domain when the user omits it (e.g. alice -> alice@domain)."""
     value = raw.strip()
     if not value:
         return ""
     if "@" not in value:
+        if not domain:
+            return value
         return f"{value}@{domain}"
     return value
 
 
-def is_org_email(email: str, domain: str = WARPGATE_DOMAIN) -> bool:
+def is_org_email(email: str, domain: str) -> bool:
+    if not domain:
+        return True
     return email.endswith(f"@{domain}")
 
 
-def short_username(email: str, domain: str = WARPGATE_DOMAIN) -> str:
-    if email.endswith(f"@{domain}"):
+def short_username(email: str, domain: str) -> str:
+    if domain and email.endswith(f"@{domain}"):
         return email[: -len(domain) - 1]
     return email.split("@", 1)[0]
 

@@ -1,0 +1,28 @@
+# Copy to ~/.config/wssh/config.yaml or set WSSH_CONFIG to point at your file.
+# Run `wssh setup` for an interactive wizard instead of editing by hand.
+
+# Warpgate account (email or username your Warpgate instance uses)
+user: alice@example.com
+
+# Bastion hostname (SSH and HTTPS)
+host: bastion.example.com
+port: 2222
+
+# Optional: append to usernames entered without @ during setup
+domain: example.com
+
+# Optional: DNS suffix for short names in `wssh setup-server` (dns01 -> dns01.internal.example.com)
+server_domain: internal.example.com
+
+# API token from Warpgate → Profile → API Tokens
+api_token: ""
+
+# Optional: separate admin token for wssh setup-server (defaults to api_token)
+# admin_api_token: ""
+
+# Optional: cache Warpgate client keys locally after first admin fetch
+# warpgate_client_keys: []
+
+targets_cache_ttl_hours: 24
+default_ssh_user: root
+default_ssh_port: 22

@@ -43,7 +43,7 @@ COMMANDS = frozenset({
 
 app = typer.Typer(
     name="wssh",
-    help="McKinnon Warpgate SSH client",
+    help="SSH to Warpgate targets from your terminal",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -110,17 +110,15 @@ def setup_cmd(
 @auth_app.command("login")
 def auth_login(
     token: Optional[str] = typer.Option(None, "--token", help="Paste an existing API token"),
-    provider: str = typer.Option("google", "--provider"),
     no_browser_cookies: bool = typer.Option(
         False,
         "--no-browser-cookies",
         help="Do not try to read session cookies from the browser",
     ),
 ) -> None:
-    """Sign in via Google SSO and store an API token."""
+    """Sign in via the Warpgate web UI and store an API token."""
     login_interactive(
         _config(),
-        provider=provider,
         token=token,
         use_browser_cookies=not no_browser_cookies,
     )
@@ -252,7 +250,7 @@ def doctor_cmd() -> None:
 def connect(target: str, ssh_args: list[str]) -> int:
     """Connect via Warpgate; return ssh exit code."""
     config = _config()
-    if not config.user:
+    if not config.host or not config.user:
         console.print("[red]Not configured — run: wssh setup[/red]")
         return 1
 

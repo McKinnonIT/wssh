@@ -11,7 +11,7 @@ from rich.prompt import Confirm, Prompt
 
 from wssh.auth import login_interactive
 from wssh.config import WsshConfig, load_config, save_config
-from wssh.constants import CREDENTIALS_URL
+from wssh.constants import DEFAULT_WARPGATE_PORT
 from wssh.email import git_default_email, is_org_email, normalize_email
 from wssh.shell_rc import detect_rc_file, detect_shell_name, install_completion, remove_marked_blocks
 from wssh.ssh_key import (
@@ -27,16 +27,73 @@ from wssh.warpgate import WarpgateApiError, WarpgateClient
 console = Console()
 
 
+def prompt_connection_settings(config: WsshConfig) -> None:
+    """Collect Warpgate host, port, and optional domains for email / server FQDNs."""
+    env_host = os.environ.get("WSSH_HOST", "").strip()
+    env_domain = os.environ.get("WSSH_DOMAIN", "").strip()
+    env_server_domain = os.environ.get("WSSH_SERVER_DOMAIN", "").strip()
+
+    console.print("\n[bold blue]Warpgate server[/bold blue]")
+    console.print(
+        "[dim]Hostname of your Warpgate bastion (SSH and HTTPS use the same host).[/dim]"
+    )
+    while True:
+        host = Prompt.ask(
+            "Warpgate host",
+            default=env_host or config.host or "",
+            show_default=bool(env_host or config.host),
+        ).strip()
+        if host:
+            config.host = host
+            break
+        console.print("[red]Host is required[/red]")
+
+    port_default = config.port or DEFAULT_WARPGATE_PORT
+    if env_port := os.environ.get("WSSH_PORT", "").strip():
+        port_default = int(env_port)
+    port_raw = Prompt.ask(
+        "Warpgate SSH port",
+        default=str(port_default),
+        show_default=True,
+    ).strip()
+    config.port = int(port_raw) if port_raw else port_default
+
+    console.print(
+        "\n[dim]Optional: email domain appended when you enter a username without @ "
+        "(leave blank to require a full email).[/dim]"
+    )
+    domain = Prompt.ask(
+        "Email domain",
+        default=env_domain or config.domain or "",
+        show_default=bool(env_domain or config.domain),
+    ).strip()
+    config.domain = domain
+
+    console.print(
+        "\n[dim]Optional: DNS suffix for short server names in "
+        "[bold]wssh setup-server[/bold] (e.g. dns01 → dns01.suffix).[/dim]"
+    )
+    server_domain = Prompt.ask(
+        "Server domain suffix",
+        default=env_server_domain or config.server_domain or "",
+        show_default=bool(env_server_domain or config.server_domain),
+    ).strip()
+    config.server_domain = server_domain
+
+
 def prompt_email(config: WsshConfig) -> str:
     console.print("\n[bold blue]Your Warpgate username[/bold blue]")
-    default = git_default_email() or config.user
-    if default and "@" not in default:
+    default = git_default_email(config.domain) or config.user
+    if default and config.domain and "@" not in default:
         default = normalize_email(default, config.domain)
 
     while True:
-        hint = f" (e.g. firstname.lastname or full @{config.domain})"
+        if config.domain:
+            hint = f" (local part or full @{config.domain})"
+        else:
+            hint = " (full email address)"
         raw = Prompt.ask(
-            "Google Workspace email" + (f" [{default}]" if default else hint),
+            "Warpgate username" + (f" [{default}]" if default else hint),
             default=default or "",
             show_default=bool(default),
         ).strip()
@@ -44,9 +101,12 @@ def prompt_email(config: WsshConfig) -> str:
             raw = default
         email = normalize_email(raw, config.domain)
         if not email:
-            console.print("[red]Email is required[/red]")
+            console.print("[red]Username is required[/red]")
             continue
-        if not is_org_email(email, config.domain):
+        if "@" not in email and not config.domain:
+            console.print("[red]Enter a full email address, or set an email domain first[/red]")
+            continue
+        if config.domain and not is_org_email(email, config.domain):
             if not Confirm.ask(
                 f"Expected @{config.domain} — continue with '{email}'?",
                 default=False,
@@ -68,7 +128,9 @@ def setup_ssh_key(
         console.print(f"[green]Found existing key: {key.path}[/green]")
     else:
         if not Confirm.ask("No SSH key found. Generate one now?", default=True):
-            console.print("[yellow]Skipping SSH key — Google login required each time[/yellow]")
+            console.print(
+                "[yellow]Skipping SSH key — you may need to sign in for each session[/yellow]"
+            )
             return None
         if dry_run:
             console.print("[yellow]dry-run: would generate ~/.ssh/id_ed25519[/yellow]")
@@ -86,7 +148,7 @@ def setup_ssh_key(
             console.print("[green]Copied public key to clipboard[/green]")
         console.print(f"\n{openssh_line}\n")
         console.print("Paste into Warpgate credentials:")
-        console.print(f"  {CREDENTIALS_URL}\n")
+        console.print(f"  {config.credentials_url}\n")
         if not dry_run:
             Prompt.ask("Press Enter when the key is saved", default="")
         return key.openssh_line
@@ -137,11 +199,13 @@ def run_setup(
         console.print("[red]Do not run wssh setup as root.[/red]")
         sys.exit(1)
 
-    console.print("\n[bold]McKinnon Warpgate SSH Setup[/bold]")
+    console.print("\n[bold]Warpgate SSH setup[/bold]")
     if dry_run:
         console.print("[yellow]DRY RUN — no changes will be made[/yellow]")
 
     config = load_config()
+    if not config.host:
+        prompt_connection_settings(config)
     config.user = prompt_email(config)
 
     if not skip_auth and not dry_run and not manual_credentials:
@@ -173,4 +237,4 @@ def run_setup(
     save_config(config)
     console.print("\n[bold green]Setup complete[/bold green]")
     console.print(f"Reload your shell: [bold]source {rc_file}[/bold]")
-    console.print("Example: [bold]wssh dns01[/bold]\n")
+    console.print("Example: [bold]wssh myserver[/bold]\n")

@@ -1,18 +1,10 @@
-"""Organization defaults for McKinnon Warpgate."""
+"""Shared defaults for wssh (not tied to any deployment)."""
 
-WARPGATE_HOST = "ssh.mckinnon.tech"
-WARPGATE_PORT = 2222
-WARPGATE_DOMAIN = "mckinnonsc.vic.edu.au"
-# Internal server hostnames (direct SSH, before Warpgate)
-SERVER_DOMAIN = "noddy.mckinnonsc.vic.edu.au"
+DEFAULT_WARPGATE_PORT = 2222
 WARPGATE_HTTPS_PORT = 443
 
 USER_API_PREFIX = "/@warpgate/api"
 ADMIN_API_PREFIX = "/@warpgate/admin/api"
-
-CREDENTIALS_URL = f"https://{WARPGATE_HOST}/@warpgate/#/profile/credentials"
-API_TOKENS_URL = f"https://{WARPGATE_HOST}/@warpgate/#/profile/api-tokens"
-LOGIN_URL = f"https://{WARPGATE_HOST}/@warpgate/#/login"
 
 DEFAULT_TARGETS_CACHE_TTL_HOURS = 24
 # Role granted on targets created/updated by wssh setup-server (Warpgate "Allow access for roles")

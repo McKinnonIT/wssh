@@ -16,7 +16,7 @@ _SAMPLE_BLOB = (
     "bPEzCUmGe2Zc0JO+di/0fAofcxBuU3b/nbMP3Tiez0J3unuNF5fq5cwlDX8Ymwl0YNjjLZ8Thqe0"
     "Af/MURD2LbvemU="
 )
-_LINE_WITH_COMMENT = f"ssh-rsa {_SAMPLE_BLOB} sam@Sams-MacBook-Pro.local"
+_LINE_WITH_COMMENT = f"ssh-rsa {_SAMPLE_BLOB} user@workstation.local"
 _LINE_WITHOUT_COMMENT = f"ssh-rsa {_SAMPLE_BLOB}"
 
 

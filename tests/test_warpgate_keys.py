@@ -13,37 +13,38 @@ _SAMPLE_BLOB = (
     "bPEzCUmGe2Zc0JO+di/0fAofcxBuU3b/nbMP3Tiez0J3unuNF5fq5cwlDX8Ymwl0YNjjLZ8Thqe0"
     "Af/MURD2LbvemU="
 )
-_LOCAL_LINE = f"ssh-rsa {_SAMPLE_BLOB} local@host"
+_LOCAL_LINE = f"ssh-rsa {_SAMPLE_BLOB} user@workstation.local"
 _STORED_LINE = f"ssh-rsa {_SAMPLE_BLOB}"
 
 
 @pytest.fixture
 def config() -> WsshConfig:
     return WsshConfig(
-        user="sam.neal@mckinnonsc.vic.edu.au",
+        user="alice@example.com",
+        host="bastion.example.com",
         api_token="test-token",
     )
 
 
 def test_find_matching_public_key_via_admin_api(config: WsshConfig, httpx_mock) -> None:
     httpx_mock.add_response(
-        url="https://ssh.mckinnon.tech/@warpgate/admin/api/users",
+        url="https://bastion.example.com/@warpgate/admin/api/users",
         json=[
             {
                 "id": "user-uuid",
-                "username": "sam.neal@mckinnonsc.vic.edu.au",
+                "username": "alice@example.com",
             }
         ],
     )
     httpx_mock.add_response(
         url=(
-            "https://ssh.mckinnon.tech/@warpgate/admin/api/users/"
+            "https://bastion.example.com/@warpgate/admin/api/users/"
             "user-uuid/credentials/public-keys"
         ),
         json=[
             {
                 "id": "key-1",
-                "label": "sam@Sams-MacBook-Pro.local",
+                "label": "user@workstation.local",
                 "openssh_public_key": _STORED_LINE,
             }
         ],
@@ -51,22 +52,22 @@ def test_find_matching_public_key_via_admin_api(config: WsshConfig, httpx_mock) 
     with WarpgateClient(config) as client:
         match = client.find_matching_public_key(_LOCAL_LINE)
     assert match is not None
-    assert match["label"] == "sam@Sams-MacBook-Pro.local"
+    assert match["label"] == "user@workstation.local"
 
 
 def test_find_matching_public_key_returns_none_when_new(config: WsshConfig, httpx_mock) -> None:
     httpx_mock.add_response(
-        url="https://ssh.mckinnon.tech/@warpgate/admin/api/users",
+        url="https://bastion.example.com/@warpgate/admin/api/users",
         json=[
             {
                 "id": "user-uuid",
-                "username": "sam.neal@mckinnonsc.vic.edu.au",
+                "username": "alice@example.com",
             }
         ],
     )
     httpx_mock.add_response(
         url=(
-            "https://ssh.mckinnon.tech/@warpgate/admin/api/users/"
+            "https://bastion.example.com/@warpgate/admin/api/users/"
             "user-uuid/credentials/public-keys"
         ),
         json=[],

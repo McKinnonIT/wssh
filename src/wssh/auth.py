@@ -12,7 +12,7 @@ from urllib.parse import quote
 from rich.console import Console
 
 from wssh.config import WsshConfig, save_config
-from wssh.constants import API_TOKEN_LABEL, API_TOKENS_URL, LOGIN_URL
+from wssh.constants import API_TOKEN_LABEL
 from wssh.warpgate import WarpgateApiError, WarpgateClient
 
 console = Console()
@@ -26,9 +26,9 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-def _login_page_url(callback_url: str) -> str:
-    """Warpgate web UI login — calls startSso in-browser and redirects to Google."""
-    return f"{LOGIN_URL}?next={quote(callback_url, safe='')}"
+def _login_page_url(config: WsshConfig, callback_url: str) -> str:
+    """Warpgate web UI login URL with a local callback for sign-in completion."""
+    return f"{config.login_url}?next={quote(callback_url, safe='')}"
 
 
 def _try_browser_session_cookie(host: str) -> str | None:
@@ -92,12 +92,10 @@ def create_api_token_with_session(
 def login_interactive(
     config: WsshConfig,
     *,
-    provider: str = "google",
     token: str | None = None,
     use_browser_cookies: bool = True,
 ) -> str:
     """Return API token (existing, pasted, or newly created)."""
-    del provider  # SSO provider is chosen on the Warpgate login page
 
     if token:
         config.api_token = token.strip()
@@ -112,12 +110,12 @@ def login_interactive(
     host = config.host
     callback_port = _free_port()
     callback_url = f"http://127.0.0.1:{callback_port}/done"
-    login_url = _login_page_url(callback_url)
+    login_url = _login_page_url(config, callback_url)
 
-    console.print("\n[bold]Sign in with Google[/bold]")
+    console.print("\n[bold]Sign in to Warpgate[/bold]")
     console.print("1. Your browser will open the Warpgate login page")
-    console.print("2. Click [bold]Sign in with Google[/bold]")
-    console.print("3. After Google sign-in you should return here automatically\n")
+    console.print("2. Complete sign-in (SSO or local account, per your Warpgate setup)")
+    console.print("3. When finished, you should return here automatically\n")
     console.print(f"If the browser did not open: {login_url}\n")
     webbrowser.open(login_url)
 
@@ -151,7 +149,7 @@ def login_interactive(
     if not secret:
         console.print(
             "\nCreate an API token in Warpgate, then paste it here.\n"
-            f"  {API_TOKENS_URL}\n"
+            f"  {config.api_tokens_url}\n"
             "  Profile → API Tokens → Add token (label: wssh-cli)\n"
         )
         pasted = console.input("[bold]API token[/bold]: ").strip()

@@ -13,16 +13,16 @@ def test_ssh_target_summary() -> None:
         "name": "dns01",
         "options": {
             "kind": "Ssh",
-            "host": "dns01.noddy.mckinnonsc.vic.edu.au",
+            "host": "dns01.internal.example.com",
             "port": 22,
-            "username": "sysadmin",
+            "username": "deploy",
         },
     }
-    assert ssh_target_summary(target) == "sysadmin@dns01.noddy.mckinnonsc.vic.edu.au:22"
+    assert ssh_target_summary(target) == "deploy@dns01.internal.example.com:22"
 
 
 def test_ssh_options_api_format() -> None:
-    client = WarpgateAdminClient(WsshConfig())
-    opts = client._ssh_options("dns01.noddy.example", 22, "sysadmin")
+    client = WarpgateAdminClient(WsshConfig(host="bastion.example.com"))
+    opts = client._ssh_options("dns01.internal.example", 22, "deploy")
     assert opts["kind"] == "Ssh"
     assert opts["auth"] == {"kind": "PublicKey"}

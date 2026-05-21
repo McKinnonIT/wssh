@@ -123,6 +123,9 @@ def probe_direct_ssh(user: str, host: str, port: int) -> DirectSshProbe:
 
 
 def run_ssh(config: WsshConfig, target: str, ssh_args: list[str]) -> int:
+    if not config.host:
+        print("Warpgate host not configured — run: wssh setup", file=sys.stderr)
+        return 1
     if not config.user:
         print("Warpgate user not configured — run: wssh setup", file=sys.stderr)
         return 1

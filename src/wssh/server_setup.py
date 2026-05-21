@@ -32,10 +32,10 @@ console = Console()
 
 
 def default_server_host(name: str, server_domain: str) -> str:
-    """Build default FQDN for a short target name (e.g. dns01 -> dns01.noddy....)."""
-    if "." in name:
+    """Build default FQDN for a short target name (e.g. dns01 -> dns01.internal.example)."""
+    if "." in name or not server_domain.strip():
         return name
-    return f"{name}.{server_domain}"
+    return f"{name}.{server_domain.strip()}"
 
 
 def get_client_keys(config: WsshConfig, *, force_refresh: bool = False) -> list[str]:
@@ -420,7 +420,7 @@ def setup_server_interactive(
     except WarpgateApiError as exc:
         console.print(f"[red]{exc}[/red]")
         console.print(
-            "Set [bold]WSSH_WARPGATE_CLIENT_KEYS[/bold] or ask IT for Warpgate client keys."
+            "Set [bold]WSSH_WARPGATE_CLIENT_KEYS[/bold] or ask your administrator for Warpgate client keys."
         )
         raise SystemExit(1) from exc
 
@@ -450,7 +450,7 @@ def setup_server_interactive(
         if exc.status_code == 403:
             console.print(
                 "[red]Cannot register/update target — admin permission required.[/red]\n"
-                "Ask IT to set Warpgate target "
+                "Ask your administrator to set Warpgate target "
                 f"[bold]{name}[/bold] → {ssh_user}@{host}:{ssh_port}"
             )
             raise SystemExit(1) from exc

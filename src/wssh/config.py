@@ -9,27 +9,21 @@ from typing import Any
 
 import yaml
 
-from wssh.constants import (
-    DEFAULT_TARGETS_CACHE_TTL_HOURS,
-    SERVER_DOMAIN,
-    WARPGATE_DOMAIN,
-    WARPGATE_HOST,
-    WARPGATE_PORT,
-)
+from wssh.constants import DEFAULT_TARGETS_CACHE_TTL_HOURS, DEFAULT_WARPGATE_PORT
 
 
 @dataclass
 class WsshConfig:
     user: str = ""
-    host: str = WARPGATE_HOST
-    port: int = WARPGATE_PORT
-    domain: str = WARPGATE_DOMAIN
-    server_domain: str = SERVER_DOMAIN
+    host: str = ""
+    port: int = DEFAULT_WARPGATE_PORT
+    domain: str = ""
+    server_domain: str = ""
     api_token: str = ""
     admin_api_token: str = ""
     warpgate_client_keys: list[str] = field(default_factory=list)
     targets_cache_ttl_hours: int = DEFAULT_TARGETS_CACHE_TTL_HOURS
-    default_ssh_user: str = "sysadmin"
+    default_ssh_user: str = "root"
     default_ssh_port: int = 22
 
     @property
@@ -39,6 +33,21 @@ class WsshConfig:
     @property
     def admin_api_base(self) -> str:
         return f"https://{self.host}/@warpgate/admin/api"
+
+    @property
+    def credentials_url(self) -> str:
+        return f"https://{self.host}/@warpgate/#/profile/credentials"
+
+    @property
+    def api_tokens_url(self) -> str:
+        return f"https://{self.host}/@warpgate/#/profile/api-tokens"
+
+    @property
+    def login_url(self) -> str:
+        return f"https://{self.host}/@warpgate/#/login"
+
+    def is_configured(self) -> bool:
+        return bool(self.host.strip() and self.user.strip())
 
     def effective_api_token(self) -> str:
         return os.environ.get("WSSH_API_TOKEN", "").strip() or self.api_token.strip()
@@ -74,10 +83,10 @@ class WsshConfig:
     def from_dict(cls, data: dict[str, Any]) -> WsshConfig:
         return cls(
             user=str(data.get("user", "")),
-            host=str(data.get("host", WARPGATE_HOST)),
-            port=int(data.get("port", WARPGATE_PORT)),
-            domain=str(data.get("domain", WARPGATE_DOMAIN)),
-            server_domain=str(data.get("server_domain", SERVER_DOMAIN)),
+            host=str(data.get("host", "")),
+            port=int(data.get("port", DEFAULT_WARPGATE_PORT)),
+            domain=str(data.get("domain", "")),
+            server_domain=str(data.get("server_domain", "")),
             api_token=str(data.get("api_token", "")),
             admin_api_token=str(data.get("admin_api_token", "")),
             warpgate_client_keys=list(data.get("warpgate_client_keys") or []),
@@ -87,6 +96,19 @@ class WsshConfig:
             default_ssh_user=str(data.get("default_ssh_user", "root")),
             default_ssh_port=int(data.get("default_ssh_port", 22)),
         )
+
+
+def apply_env_overrides(config: WsshConfig) -> WsshConfig:
+    """Apply WSSH_* environment variables over file-backed settings."""
+    if host := os.environ.get("WSSH_HOST", "").strip():
+        config.host = host
+    if port := os.environ.get("WSSH_PORT", "").strip():
+        config.port = int(port)
+    if domain := os.environ.get("WSSH_DOMAIN", "").strip():
+        config.domain = domain
+    if server_domain := os.environ.get("WSSH_SERVER_DOMAIN", "").strip():
+        config.server_domain = server_domain
+    return config
 
 
 def default_config_path() -> Path:
@@ -103,12 +125,12 @@ def default_cache_dir() -> Path:
 def load_config(path: Path | None = None) -> WsshConfig:
     config_path = path or default_config_path()
     if not config_path.is_file():
-        return WsshConfig()
+        return apply_env_overrides(WsshConfig())
     with config_path.open(encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     if not isinstance(data, dict):
         raise ValueError(f"Invalid config format in {config_path}")
-    return WsshConfig.from_dict(data)
+    return apply_env_overrides(WsshConfig.from_dict(data))
 
 
 def save_config(config: WsshConfig, path: Path | None = None) -> Path:

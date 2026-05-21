@@ -1,5 +1,4 @@
 from wssh.config import WsshConfig
-from wssh.constants import SERVER_DOMAIN
 from wssh.server_setup import (
     _build_authorized_keys_remote_cmd,
     _print_manual_keys_instructions,
@@ -16,6 +15,9 @@ def test_build_authorized_keys_remote_cmd() -> None:
     assert "ssh-ed25519 AAA test" in cmd
 
 
+SERVER_DOMAIN = "internal.example.com"
+
+
 def test_default_server_host_short_name() -> None:
     assert default_server_host("dns01", SERVER_DOMAIN) == f"dns01.{SERVER_DOMAIN}"
 
@@ -25,8 +27,16 @@ def test_default_server_host_fqdn_unchanged() -> None:
     assert default_server_host(fqdn, SERVER_DOMAIN) == fqdn
 
 
+def test_default_server_host_without_suffix() -> None:
+    assert default_server_host("dns01", "") == "dns01"
+
+
 def test_prompt_server_connection_accepts_defaults(monkeypatch) -> None:
-    config = WsshConfig(default_ssh_user="sysadmin", default_ssh_port=22)
+    config = WsshConfig(
+        server_domain=SERVER_DOMAIN,
+        default_ssh_user="deploy",
+        default_ssh_port=22,
+    )
     monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: True)
     prompted: list[str] = []
     monkeypatch.setattr(
@@ -35,13 +45,13 @@ def test_prompt_server_connection_accepts_defaults(monkeypatch) -> None:
     )
     host, user, port = prompt_server_connection(config, "dns02")
     assert host == f"dns02.{SERVER_DOMAIN}"
-    assert user == "sysadmin"
+    assert user == "deploy"
     assert port == 22
     assert prompted == []
 
 
 def test_prompt_server_connection_custom_values(monkeypatch) -> None:
-    config = WsshConfig(default_ssh_user="sysadmin", default_ssh_port=22)
+    config = WsshConfig(default_ssh_user="deploy", default_ssh_port=22)
     monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: False)
     answers = iter(["custom.host", "root", "2222"])
     monkeypatch.setattr(
@@ -59,8 +69,8 @@ def test_install_authorized_keys_timeout_returns_false(monkeypatch) -> None:
     monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: False)
     assert (
         install_authorized_keys(
-            "sysadmin",
-            "pangolin.noddy.example.com",
+            "deploy",
+            "pangolin.internal.example.com",
             22,
             ["ssh-ed25519 AAA test"],
             target_name="pangolin",
@@ -75,8 +85,8 @@ def test_install_authorized_keys_failure_returns_false(monkeypatch) -> None:
     monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: False)
     assert (
         install_authorized_keys(
-            "sysadmin",
-            "zabbix02.noddy.example.com",
+            "deploy",
+            "zabbix02.internal.example.com",
             22,
             ["ssh-ed25519 AAA test"],
             target_name="zabbix02",
@@ -101,9 +111,9 @@ def test_manual_keys_instructions_use_clipboard_when_available(monkeypatch) -> N
         lambda msg, **k: None,
     )
     _print_manual_keys_instructions(
-        "sysadmin",
+        "deploy",
         ["ssh-ed25519 AAA warpgate", "ssh-rsa BBB warpgate"],
-        host="pangolin.noddy.example.com",
+        host="pangolin.internal.example.com",
         target_name="pangolin",
     )
     assert copied == [["ssh-ed25519 AAA warpgate", "ssh-rsa BBB warpgate"]]
@@ -127,8 +137,8 @@ def test_install_authorized_keys_failure_shows_instructions_when_asked(monkeypat
     )
     assert (
         install_authorized_keys(
-            "sysadmin",
-            "zabbix02.noddy.example.com",
+            "deploy",
+            "zabbix02.internal.example.com",
             22,
             ["ssh-ed25519 AAA test"],
             target_name="zabbix02",
@@ -150,11 +160,11 @@ def test_install_authorized_keys_runs_remote_cmd(monkeypatch) -> None:
 
     monkeypatch.setattr("wssh.server_setup.run_direct_ssh", fake_run_direct_ssh)
     assert install_authorized_keys(
-        "sysadmin",
+        "deploy",
         "dns02.example.com",
         22,
         ["ssh-ed25519 AAA test"],
     )
     assert len(calls) == 1
-    assert calls[0][0] == "sysadmin"
+    assert calls[0][0] == "deploy"
     assert "ssh-ed25519 AAA test" in calls[0][3]

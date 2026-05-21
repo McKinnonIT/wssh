@@ -15,14 +15,15 @@ _SAMPLE_BLOB = (
     "bPEzCUmGe2Zc0JO+di/0fAofcxBuU3b/nbMP3Tiez0J3unuNF5fq5cwlDX8Ymwl0YNjjLZ8Thqe0"
     "Af/MURD2LbvemU="
 )
-_LINE_WITH_COMMENT = f"ssh-rsa {_SAMPLE_BLOB} sam@Sams-MacBook-Pro.local"
+_LINE_WITH_COMMENT = f"ssh-rsa {_SAMPLE_BLOB} user@workstation.local"
 _LINE_WITHOUT_COMMENT = f"ssh-rsa {_SAMPLE_BLOB}"
 
 
 @pytest.fixture
 def config() -> WsshConfig:
     return WsshConfig(
-        user="sam.neal@mckinnonsc.vic.edu.au",
+        user="alice@example.com",
+        host="bastion.example.com",
         api_token="test-token",
     )
 
@@ -30,7 +31,7 @@ def config() -> WsshConfig:
 def test_add_public_key_strips_comment(config: WsshConfig, httpx_mock) -> None:
     httpx_mock.add_response(
         method="POST",
-        url="https://ssh.mckinnon.tech/@warpgate/api/profile/credentials/public-keys",
+        url="https://bastion.example.com/@warpgate/api/profile/credentials/public-keys",
         json={"id": "key-1", "label": "wssh (test)", "abbreviated": "ssh-rsa AA..."},
     )
     with WarpgateClient(config) as client:
