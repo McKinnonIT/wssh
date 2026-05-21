@@ -35,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/McKinnonIT/wssh/main/install.sh | b
 wssh setup
 ```
 
-`wssh setup` asks for your Warpgate host, username, SSH key, API token, and shell tab completion. Settings are saved to `~/.config/wssh/config.yaml`.
+`wssh setup` asks for your Warpgate host, username, SSH key, API token, and shell tab completion. Settings are saved to `~/.wssh/config.yaml`.
 
 Connect to a target:
 
@@ -51,7 +51,7 @@ wssh myserver -- systemctl status nginx
 
 ## Configuration
 
-Config file: `~/.config/wssh/config.yaml` (override with `WSSH_CONFIG`).
+Config file: `~/.wssh/config.yaml` (override with `WSSH_CONFIG`).
 
 Example:
 

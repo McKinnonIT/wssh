@@ -1,4 +1,4 @@
-"""Load and save ~/.config/wssh/config.yaml."""
+"""Load and save ~/.wssh/config.yaml."""
 
 from __future__ import annotations
 
@@ -115,11 +115,11 @@ def default_config_path() -> Path:
     override = os.environ.get("WSSH_CONFIG")
     if override:
         return Path(override).expanduser()
-    return Path.home() / ".config" / "wssh" / "config.yaml"
+    return Path.home() / ".wssh" / "config.yaml"
 
 
 def default_cache_dir() -> Path:
-    return Path.home() / ".cache" / "wssh"
+    return Path.home() / ".wssh" / "cache"
 
 
 def load_config(path: Path | None = None) -> WsshConfig:

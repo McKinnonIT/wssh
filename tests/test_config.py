@@ -1,4 +1,4 @@
-from wssh.config import WsshConfig, apply_env_overrides
+from wssh.config import WsshConfig, apply_env_overrides, default_config_path
 
 
 def test_apply_env_overrides(monkeypatch) -> None:
@@ -18,3 +18,8 @@ def test_config_urls() -> None:
     assert config.login_url == "https://bastion.example.com/@warpgate/#/login"
     assert config.credentials_url.endswith("/profile/credentials")
     assert config.api_tokens_url.endswith("/profile/api-tokens")
+
+
+def test_default_config_path() -> None:
+    assert default_config_path().name == "config.yaml"
+    assert default_config_path().parent.name == ".wssh"

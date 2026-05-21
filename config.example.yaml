@@ -1,4 +1,4 @@
-# Copy to ~/.config/wssh/config.yaml or set WSSH_CONFIG to point at your file.
+# Copy to ~/.wssh/config.yaml or set WSSH_CONFIG to point at your file.
 # Run `wssh setup` for an interactive wizard instead of editing by hand.
 
 # Warpgate account (email or username your Warpgate instance uses)
