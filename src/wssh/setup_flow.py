@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import platform
+import shutil
 import socket
 import sys
 
@@ -236,5 +238,16 @@ def run_setup(
 
     save_config(config)
     console.print("\n[bold green]Setup complete[/bold green]")
-    console.print(f"Reload your shell: [bold]source {rc_file}[/bold]")
+    if not shutil.which("wssh"):
+        console.print(
+            "[yellow]wssh is not on PATH in this shell.[/yellow] "
+            'Try: [bold]export PATH="$HOME/.local/bin:$PATH"[/bold]'
+        )
+    if platform.system() == "Darwin":
+        console.print(
+            "Reload PATH: [bold]source ~/.zprofile[/bold] "
+            "(pipx adds ~/.local/bin there on macOS), then run [bold]wssh[/bold]."
+        )
+    else:
+        console.print(f"Reload your shell: [bold]source {rc_file}[/bold]")
     console.print("Example: [bold]wssh myserver[/bold]\n")

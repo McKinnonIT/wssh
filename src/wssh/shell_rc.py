@@ -63,13 +63,17 @@ def completion_block(shell: str) -> str:
             f"\n{COMPLETION_BEGIN}\n"
             f"# Added by wssh — tab-complete Warpgate SSH targets\n"
             f"# Place this block after 'compinit' in .zshrc if completion fails.\n"
-            f'eval "$(wssh completion zsh)"\n'
+            f"if command -v wssh >/dev/null 2>&1; then\n"
+            f'  eval "$(wssh completion zsh)"\n'
+            f"fi\n"
             f"{COMPLETION_END}\n"
         )
     return (
         f"\n{COMPLETION_BEGIN}\n"
         f"# Added by wssh — tab-complete Warpgate SSH targets\n"
-        f'eval "$(wssh completion bash)"\n'
+        f"if command -v wssh >/dev/null 2>&1; then\n"
+        f'  eval "$(wssh completion bash)"\n'
+        f"fi\n"
         f"{COMPLETION_END}\n"
     )
 
