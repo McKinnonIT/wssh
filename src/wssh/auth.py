@@ -88,12 +88,16 @@ def login_interactive(
             )
 
     if not secret:
+        console.print("\n[bold]Create an API token in Warpgate[/bold]")
         console.print(
-            "\nCreate an API token in Warpgate, then paste it here.\n"
-            f"  {config.api_tokens_url}\n"
-            "  Profile → API Tokens → Add token (label: wssh-cli)\n"
+            f"  1. Open [bold]{config.api_tokens_url}[/bold]\n"
+            "     [dim]Sign in if prompted — the page stays empty until you do.[/dim]\n"
+            "  2. Go to [bold]Profile → API Tokens[/bold] and click [bold]Add token[/bold]\n"
+            f"  3. Label: [bold]{API_TOKEN_LABEL}[/bold], then save\n"
+            "  4. Copy the token it shows you — it is only displayed once\n"
         )
-        pasted = console.input("[bold]API token[/bold]: ").strip()
+        webbrowser.open(config.api_tokens_url)
+        pasted = console.input("[bold]Paste the API token here[/bold]: ").strip()
         if not pasted:
             raise SystemExit("API token is required")
         secret = pasted
