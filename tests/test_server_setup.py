@@ -87,6 +87,41 @@ def test_install_authorized_keys_failure_returns_false(monkeypatch) -> None:
     )
 
 
+def test_unreachable_host_names_the_network_as_the_cause(monkeypatch) -> None:
+    """No credential fixes an unreachable host — don't let the user hunt for one."""
+    monkeypatch.setattr("wssh.server_setup.probe_direct_ssh", lambda *a: "timeout")
+    monkeypatch.setattr("wssh.server_setup.copy_to_clipboard", lambda text: True)
+    printed: list[str] = []
+    monkeypatch.setattr(
+        "wssh.server_setup.console.print", lambda msg="", **k: printed.append(str(msg))
+    )
+    assert (
+        install_authorized_keys(
+            "sysadmin", "fms03.internal", 22, ["ssh-ed25519 AAA x"], target_name="fms03"
+        )
+        is False
+    )
+    blob = "\n".join(printed)
+    assert "network or VPN" in blob
+    assert "port 22 never answered" in blob
+    assert "wssh setup-server fms03" in blob
+
+
+def test_reachable_host_still_attempts_a_password_login(monkeypatch) -> None:
+    """Installing keys on a host that lacks them is exactly when a password is needed."""
+    monkeypatch.setattr("wssh.server_setup.probe_direct_ssh", lambda *a: "auth")
+    monkeypatch.setattr("wssh.server_setup.copy_to_clipboard", lambda text: True)
+    monkeypatch.setattr("wssh.server_setup.console.print", lambda *a, **k: None)
+    attempts: list[tuple] = []
+    monkeypatch.setattr(
+        "wssh.server_setup.run_direct_ssh",
+        lambda user, host, port, cmd, **k: attempts.append((user, host)) or 1,
+    )
+    install_authorized_keys("sysadmin", "fms03.internal", 22, ["ssh-ed25519 AAA x"])
+    assert attempts, "a reachable host must still get an interactive login attempt"
+    assert attempts[0] == ("sysadmin", "fms03.internal")
+
+
 def test_blocked_keys_use_clipboard_when_available(monkeypatch, capsys) -> None:
     copied: list[str] = []
     monkeypatch.setattr(

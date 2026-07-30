@@ -71,13 +71,19 @@ def _authorized_keys_remote_cmd(keys: list[str]) -> str:
     return " && ".join(lines)
 
 
+# Cause, then the one thing that fixes it. Reachability failures are almost always
+# "you are not on the network" — say so, rather than leaving the user to infer it.
 _BLOCKED_REASON = {
-    "timeout": "timed out from your network",
-    "unreachable": "not reachable via direct SSH",
-    "host_key": "unknown host key — run [bold]ssh {dest}[/bold] once, or use console access",
-    "auth": "no password login available — use console access or an existing key",
-    "install_failed": "the install command failed",
+    "timeout": "port {port} never answered — no route to it from this machine",
+    "unreachable": "the connection was refused — check sshd is listening on port {port}",
+    "host_key": "unknown host key — run [bold]ssh {dest}[/bold] once to accept it",
+    "auth": "it refused the login — use console access or an account you can log in as",
+    "install_failed": "the install command failed once connected",
 }
+
+# Reachability failures are almost always "you are not on the network", and no
+# credential fixes them. Say so, instead of leaving the user to infer it.
+_OFF_NETWORK = ("timeout", "unreachable")
 
 
 def _print_keys_install_blocked(
@@ -86,10 +92,17 @@ def _print_keys_install_blocked(
     keys: list[str],
     *,
     reason: str,
+    port: int = 22,
+    target_name: str | None = None,
 ) -> None:
     """Explain why automatic key install failed, and how to do it by hand."""
+    detail = _BLOCKED_REASON.get(reason, reason).format(dest=dest, port=port)
     console.print("\n[bold red]✗ Could not install Warpgate keys from here[/bold red]")
-    console.print(f"  [dim]{dest} — {_BLOCKED_REASON.get(reason, reason).format(dest=dest)}[/dim]")
+    console.print(f"  [dim]{dest} — {detail}[/dim]")
+    if reason in _OFF_NETWORK:
+        console.print("  [yellow]Are you on the school network or VPN?[/yellow]")
+    if target_name:
+        console.print(f"  [dim]Then run [bold]wssh setup-server {target_name}[/bold] again.[/dim]")
     console.print("  [dim]Warpgate may still reach this host — you can register it anyway.[/dim]")
     console.print(f"\n[bold]To install by hand[/bold], on the server as [bold]{ssh_user}[/bold]:")
     console.print("  [dim]mkdir -p ~/.ssh && chmod 700 ~/.ssh[/dim]")
@@ -112,6 +125,7 @@ def install_authorized_keys(
     keys: list[str],
     *,
     dry_run: bool = False,
+    target_name: str | None = None,
 ) -> bool:
     """Append Warpgate client keys in a single SSH session (one password prompt).
 
@@ -133,7 +147,9 @@ def install_authorized_keys(
     )
     probe = probe_direct_ssh(user, host, port)
     if probe in ("timeout", "unreachable", "host_key"):
-        _print_keys_install_blocked(dest, user, stripped_keys, reason=probe)
+        _print_keys_install_blocked(
+            dest, user, stripped_keys, reason=probe, port=port, target_name=target_name
+        )
         return False
 
     console.print(
@@ -152,6 +168,8 @@ def install_authorized_keys(
             user,
             stripped_keys,
             reason="auth" if probe == "auth" else "install_failed",
+            port=port,
+            target_name=target_name,
         )
         return False
     console.print(
@@ -340,7 +358,9 @@ def setup_server_interactive(
         raise SystemExit(1) from exc
 
     console.print(f"Installing {len(keys)} Warpgate client key(s) on {ssh_user}@{host}…")
-    keys_installed = install_authorized_keys(ssh_user, host, ssh_port, keys, dry_run=dry_run)
+    keys_installed = install_authorized_keys(
+        ssh_user, host, ssh_port, keys, dry_run=dry_run, target_name=name
+    )
     if not keys_installed:
         if not Confirm.ask(
             "Continue Warpgate setup anyway? "
