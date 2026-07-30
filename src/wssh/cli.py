@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 
 from wssh import __version__
 from wssh.auth import login_interactive, logout
-from wssh.completion import bash_completion, zsh_completion
-from wssh.config import default_config_path, load_config, save_config
+from wssh.completion import bash_completion, command_tree, zsh_completion
+from wssh.config import default_config_path, load_config
 from wssh.connect import classify_ssh_failure, format_ssh_hint, run_ssh, run_ssh_capture
 from wssh.server_setup import (
     explain_target_not_visible,
@@ -26,20 +25,8 @@ from wssh.ssh_key import (
     public_key_fingerprint,
     public_key_stored_correctly,
 )
-from wssh.targets import get_target_names, refresh_targets
+from wssh.targets import get_target_names
 from wssh.warpgate import WarpgateApiError, WarpgateClient
-
-COMMANDS = frozenset({
-    "setup",
-    "auth",
-    "targets",
-    "credentials",
-    "completion",
-    "setup-server",
-    "version",
-    "config-path",
-    "doctor",
-})
 
 app = typer.Typer(
     name="wssh",
@@ -55,26 +42,24 @@ app.add_typer(targets_app, name="targets")
 app.add_typer(credentials_app, name="credentials")
 
 console = Console()
-_state_config_path: Optional[Path] = None
-_state_dry_run: bool = False
+_state_config_path: Path | None = None
 
 
 def _parse_global_flags(argv: list[str]) -> list[str]:
-    """Extract --config / --dry-run from argv; return remaining args."""
-    global _state_config_path, _state_dry_run
+    """Extract --config <path> from argv; return remaining args.
+
+    Typer owns every other flag — this only exists because a bare target name
+    (``wssh dns01``) is not a subcommand and never reaches Typer.
+    """
+    global _state_config_path
     rest: list[str] = []
     i = 0
     while i < len(argv):
-        arg = argv[i]
-        if arg in ("--dry-run", "-n"):
-            _state_dry_run = True
-        elif arg in ("--verbose", "-v"):
-            pass
-        elif arg == "--config" and i + 1 < len(argv):
+        if argv[i] == "--config" and i + 1 < len(argv):
             _state_config_path = Path(argv[i + 1])
             i += 1
         else:
-            rest.append(arg)
+            rest.append(argv[i])
         i += 1
     return rest
 
@@ -101,7 +86,7 @@ def setup_cmd(
 ) -> None:
     """First-time setup: email, SSH key, auth, shell completion."""
     run_setup(
-        dry_run=dry_run or _state_dry_run,
+        dry_run=dry_run,
         manual_credentials=manual_credentials,
         skip_auth=skip_auth,
     )
@@ -109,7 +94,7 @@ def setup_cmd(
 
 @auth_app.command("login")
 def auth_login(
-    token: Optional[str] = typer.Option(None, "--token", help="Paste an existing API token"),
+    token: str | None = typer.Option(None, "--token", help="Paste an existing API token"),
     no_browser_cookies: bool = typer.Option(
         False,
         "--no-browser-cookies",
@@ -153,7 +138,7 @@ def targets_list(
 def targets_refresh_cmd() -> None:
     """Refresh the local targets cache."""
     try:
-        names = refresh_targets(_config())
+        names = get_target_names(_config(), force_refresh=True)
     except WarpgateApiError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc
@@ -162,8 +147,8 @@ def targets_refresh_cmd() -> None:
 
 @credentials_app.command("add-key")
 def credentials_add_key(
-    key_path: Optional[Path] = typer.Option(None, "--key", help="Path to .pub file"),
-    label: Optional[str] = typer.Option(None, "--label"),
+    key_path: Path | None = typer.Option(None, "--key", help="Path to .pub file"),
+    label: str | None = typer.Option(None, "--label"),
 ) -> None:
     """Upload your SSH public key to Warpgate."""
     config = _config()
@@ -223,7 +208,7 @@ def setup_server_cmd(
 ) -> None:
     """Install Warpgate keys on a server and register it in Warpgate."""
     try:
-        setup_server_interactive(_config(), name, dry_run=dry_run or _state_dry_run)
+        setup_server_interactive(_config(), name, dry_run=dry_run)
     except WarpgateApiError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc
@@ -231,20 +216,14 @@ def setup_server_cmd(
 
 @app.command("version")
 def version_cmd() -> None:
+    """Show the installed wssh version."""
     typer.echo(__version__)
 
 
 @app.command("config-path")
 def config_path_cmd() -> None:
+    """Print the path to the active config file."""
     typer.echo(str(_state_config_path or default_config_path()))
-
-
-@app.command("doctor")
-def doctor_cmd() -> None:
-    """Check for install issues (e.g. old shell function shadowing wssh)."""
-    from wssh.doctor import run_doctor
-
-    raise typer.Exit(run_doctor())
 
 
 def connect(target: str, ssh_args: list[str]) -> int:
@@ -285,7 +264,7 @@ def main() -> None:
         if not argv:
             app()
             return
-        if argv[0] in COMMANDS or argv[0].startswith("-"):
+        if argv[0] in command_tree() or argv[0].startswith("-"):
             sys.argv = ["wssh", *argv]
             app()
             return

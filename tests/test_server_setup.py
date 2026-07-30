@@ -1,7 +1,7 @@
 from wssh.config import WsshConfig
 from wssh.server_setup import (
-    _build_authorized_keys_remote_cmd,
-    _print_manual_keys_instructions,
+    _authorized_keys_remote_cmd,
+    _print_keys_install_blocked,
     default_server_host,
     install_authorized_keys,
     prompt_server_connection,
@@ -9,7 +9,7 @@ from wssh.server_setup import (
 
 
 def test_build_authorized_keys_remote_cmd() -> None:
-    cmd = _build_authorized_keys_remote_cmd(["ssh-ed25519 AAA test"])
+    cmd = _authorized_keys_remote_cmd(["ssh-ed25519 AAA test"])
     assert "sudo chown" in cmd
     assert "mkdir -p ~/.ssh" in cmd
     assert "ssh-ed25519 AAA test" in cmd
@@ -66,14 +66,10 @@ def test_prompt_server_connection_custom_values(monkeypatch) -> None:
 
 def test_install_authorized_keys_timeout_returns_false(monkeypatch) -> None:
     monkeypatch.setattr("wssh.server_setup.probe_direct_ssh", lambda *args: "timeout")
-    monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: False)
+    monkeypatch.setattr("wssh.server_setup.copy_to_clipboard", lambda text: True)
     assert (
         install_authorized_keys(
-            "deploy",
-            "pangolin.internal.example.com",
-            22,
-            ["ssh-ed25519 AAA test"],
-            target_name="pangolin",
+            "deploy", "pangolin.internal.example.com", 22, ["ssh-ed25519 AAA test"]
         )
         is False
     )
@@ -82,72 +78,50 @@ def test_install_authorized_keys_timeout_returns_false(monkeypatch) -> None:
 def test_install_authorized_keys_failure_returns_false(monkeypatch) -> None:
     monkeypatch.setattr("wssh.server_setup.probe_direct_ssh", lambda *args: "auth")
     monkeypatch.setattr("wssh.server_setup.run_direct_ssh", lambda *a, **k: 1)
-    monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: False)
+    monkeypatch.setattr("wssh.server_setup.copy_to_clipboard", lambda text: True)
     assert (
         install_authorized_keys(
-            "deploy",
-            "zabbix02.internal.example.com",
-            22,
-            ["ssh-ed25519 AAA test"],
-            target_name="zabbix02",
+            "deploy", "zabbix02.internal.example.com", 22, ["ssh-ed25519 AAA test"]
         )
         is False
     )
 
 
-def test_manual_keys_instructions_use_clipboard_when_available(monkeypatch) -> None:
-    copied: list[list[str]] = []
-    printed: list[str] = []
+def test_blocked_keys_use_clipboard_when_available(monkeypatch, capsys) -> None:
+    copied: list[str] = []
     monkeypatch.setattr(
-        "wssh.server_setup._copy_lines_to_clipboard",
-        lambda lines: copied.append(lines) or True,
+        "wssh.server_setup.copy_to_clipboard",
+        lambda text: copied.append(text) or True,
     )
-    monkeypatch.setattr(
-        "wssh.server_setup._print_copyable_key_line",
-        lambda key: printed.append(key),
-    )
-    monkeypatch.setattr(
-        "wssh.server_setup.console.print",
-        lambda msg, **k: None,
-    )
-    _print_manual_keys_instructions(
+    monkeypatch.setattr("wssh.server_setup.console.print", lambda *a, **k: None)
+    _print_keys_install_blocked(
+        "deploy@pangolin.internal.example.com",
         "deploy",
         ["ssh-ed25519 AAA warpgate", "ssh-rsa BBB warpgate"],
-        host="pangolin.internal.example.com",
-        target_name="pangolin",
+        reason="timeout",
     )
-    assert copied == [["ssh-ed25519 AAA warpgate", "ssh-rsa BBB warpgate"]]
-    assert printed == []
+    assert copied == ["ssh-ed25519 AAA warpgate\nssh-rsa BBB warpgate"]
+    assert capsys.readouterr().out == ""
 
 
-def test_install_authorized_keys_failure_shows_instructions_when_asked(monkeypatch) -> None:
+def test_blocked_keys_printed_when_clipboard_unavailable(monkeypatch, capsys) -> None:
     monkeypatch.setattr("wssh.server_setup.probe_direct_ssh", lambda *args: "ok")
     monkeypatch.setattr("wssh.server_setup.run_direct_ssh", lambda *a, **k: 1)
-    monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: True)
-    monkeypatch.setattr("wssh.server_setup._copy_lines_to_clipboard", lambda lines: False)
-    stdout_keys: list[str] = []
-    monkeypatch.setattr(
-        "wssh.server_setup._print_copyable_key_line",
-        lambda key: stdout_keys.append(key),
-    )
+    monkeypatch.setattr("wssh.server_setup.copy_to_clipboard", lambda text: False)
     printed: list[str] = []
     monkeypatch.setattr(
         "wssh.server_setup.console.print",
-        lambda msg, **k: printed.append(str(msg)),
+        lambda msg="", **k: printed.append(str(msg)),
     )
     assert (
         install_authorized_keys(
-            "deploy",
-            "zabbix02.internal.example.com",
-            22,
-            ["ssh-ed25519 AAA test"],
-            target_name="zabbix02",
+            "deploy", "zabbix02.internal.example.com", 22, ["ssh-ed25519 AAA test"]
         )
         is False
     )
-    blob = "\n".join(printed)
-    assert "Manual steps" in blob
-    assert stdout_keys == ["ssh-ed25519 AAA test"]
+    assert "To install by hand" in "\n".join(printed)
+    # The key itself goes to plain stdout so Rich cannot wrap it mid-line.
+    assert capsys.readouterr().out.splitlines() == ["ssh-ed25519 AAA test"]
 
 
 def test_install_authorized_keys_runs_remote_cmd(monkeypatch) -> None:
@@ -159,12 +133,7 @@ def test_install_authorized_keys_runs_remote_cmd(monkeypatch) -> None:
         return 0
 
     monkeypatch.setattr("wssh.server_setup.run_direct_ssh", fake_run_direct_ssh)
-    assert install_authorized_keys(
-        "deploy",
-        "dns02.example.com",
-        22,
-        ["ssh-ed25519 AAA test"],
-    )
+    assert install_authorized_keys("deploy", "dns02.example.com", 22, ["ssh-ed25519 AAA test"])
     assert len(calls) == 1
     assert calls[0][0] == "deploy"
     assert "ssh-ed25519 AAA test" in calls[0][3]

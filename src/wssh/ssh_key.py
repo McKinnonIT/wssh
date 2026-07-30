@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import os
+import base64
+import hashlib
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,17 +13,6 @@ from pathlib import Path
 class SshPublicKey:
     path: Path
     openssh_line: str
-
-    @property
-    def fingerprint_suffix(self) -> str:
-        parts = self.openssh_line.split()
-        return parts[1][:16] if len(parts) > 1 else self.openssh_line[:16]
-
-
-def public_key_blob(openssh_line: str) -> str | None:
-    """Base64 key material from an OpenSSH public-key line (comment ignored)."""
-    parts = openssh_line.strip().split()
-    return parts[1] if len(parts) >= 2 else None
 
 
 def normalize_openssh_public_key(openssh_line: str) -> str:
@@ -48,33 +37,22 @@ def public_key_stored_correctly(openssh_line: str) -> bool:
 
 
 def public_key_fingerprint(openssh_line: str) -> str:
-    """SHA256 fingerprint from an OpenSSH public-key line (e.g. ``SHA256:AbCd...``)."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".pub", delete=False, encoding="utf-8"
-    ) as fh:
-        fh.write(openssh_line.strip() + "\n")
-        path = fh.name
-    try:
-        output = subprocess.check_output(
-            ["ssh-keygen", "-lf", path],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-    finally:
-        os.unlink(path)
-    for token in output.split():
-        if token.startswith("SHA256:"):
-            return token
-    raise ValueError(f"could not parse ssh-keygen fingerprint: {output!r}")
+    """SHA256 fingerprint from an OpenSSH public-key line (e.g. ``SHA256:AbCd...``).
+
+    Same value as ``ssh-keygen -lf``: unpadded base64 of the SHA256 digest of the
+    raw (base64-decoded) key blob.
+    """
+    blob = normalize_openssh_public_key(openssh_line).split()[1]
+    digest = hashlib.sha256(base64.b64decode(blob)).digest()
+    return "SHA256:" + base64.b64encode(digest).decode().rstrip("=")
 
 
 def public_keys_match(line_a: str, line_b: str) -> bool:
     """True if two OpenSSH public-key lines are the same key (ignoring comment)."""
-    blob_a = public_key_blob(line_a)
-    blob_b = public_key_blob(line_b)
-    if blob_a and blob_b:
-        return blob_a == blob_b
-    return line_a.strip() == line_b.strip()
+    try:
+        return normalize_openssh_public_key(line_a) == normalize_openssh_public_key(line_b)
+    except ValueError:
+        return line_a.strip() == line_b.strip()
 
 
 def private_key_path(public_key: SshPublicKey) -> Path | None:

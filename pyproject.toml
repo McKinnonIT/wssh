@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 cookies = ["browser-cookie3>=0.19"]
-dev = ["pytest>=8.0", "pytest-httpx>=0.30"]
+dev = ["pytest>=8.0", "pytest-httpx>=0.30", "ruff>=0.16"]
 
 [project.scripts]
 wssh = "wssh.cli:main"
@@ -28,3 +28,11 @@ packages = ["src/wssh"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# typer.Option()/typer.Argument() in argument defaults is how Typer is written.
+ignore = ["B008"]

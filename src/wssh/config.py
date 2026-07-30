@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from wssh.constants import DEFAULT_TARGETS_CACHE_TTL_HOURS, DEFAULT_WARPGATE_PORT
+DEFAULT_WARPGATE_PORT = 2222
 
 
 @dataclass
@@ -22,7 +22,6 @@ class WsshConfig:
     api_token: str = ""
     admin_api_token: str = ""
     warpgate_client_keys: list[str] = field(default_factory=list)
-    targets_cache_ttl_hours: int = DEFAULT_TARGETS_CACHE_TTL_HOURS
     default_ssh_user: str = "root"
     default_ssh_port: int = 22
 
@@ -46,9 +45,6 @@ class WsshConfig:
     def login_url(self) -> str:
         return f"https://{self.host}/@warpgate/#/login"
 
-    def is_configured(self) -> bool:
-        return bool(self.host.strip() and self.user.strip())
-
     def effective_api_token(self) -> str:
         return os.environ.get("WSSH_API_TOKEN", "").strip() or self.api_token.strip()
 
@@ -60,42 +56,10 @@ class WsshConfig:
             return self.admin_api_token.strip()
         return self.effective_api_token()
 
-    def to_dict(self) -> dict[str, Any]:
-        data: dict[str, Any] = {
-            "user": self.user,
-            "host": self.host,
-            "port": self.port,
-            "domain": self.domain,
-            "server_domain": self.server_domain,
-            "targets_cache_ttl_hours": self.targets_cache_ttl_hours,
-            "default_ssh_user": self.default_ssh_user,
-            "default_ssh_port": self.default_ssh_port,
-        }
-        if self.api_token:
-            data["api_token"] = self.api_token
-        if self.admin_api_token:
-            data["admin_api_token"] = self.admin_api_token
-        if self.warpgate_client_keys:
-            data["warpgate_client_keys"] = self.warpgate_client_keys
-        return data
-
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WsshConfig:
-        return cls(
-            user=str(data.get("user", "")),
-            host=str(data.get("host", "")),
-            port=int(data.get("port", DEFAULT_WARPGATE_PORT)),
-            domain=str(data.get("domain", "")),
-            server_domain=str(data.get("server_domain", "")),
-            api_token=str(data.get("api_token", "")),
-            admin_api_token=str(data.get("admin_api_token", "")),
-            warpgate_client_keys=list(data.get("warpgate_client_keys") or []),
-            targets_cache_ttl_hours=int(
-                data.get("targets_cache_ttl_hours", DEFAULT_TARGETS_CACHE_TTL_HOURS)
-            ),
-            default_ssh_user=str(data.get("default_ssh_user", "root")),
-            default_ssh_port=int(data.get("default_ssh_port", 22)),
-        )
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 def apply_env_overrides(config: WsshConfig) -> WsshConfig:
@@ -137,6 +101,6 @@ def save_config(config: WsshConfig, path: Path | None = None) -> Path:
     config_path = path or default_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with config_path.open("w", encoding="utf-8") as fh:
-        yaml.safe_dump(config.to_dict(), fh, default_flow_style=False, sort_keys=False)
+        yaml.safe_dump(asdict(config), fh, default_flow_style=False, sort_keys=False)
     config_path.chmod(0o600)
     return config_path

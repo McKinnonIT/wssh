@@ -2,67 +2,92 @@
 
 SSH to [Warpgate](https://github.com/warp-tech/warpgate) targets from your terminal — interactive setup, tab completion, and optional server bootstrap.
 
+```bash
+wssh dns01
+```
+
 ## Requirements
 
 - Python 3.10+
-- [pipx](https://pipx.pypa.io/)
 - OpenSSH (`ssh`, `ssh-keygen`)
+- [pipx](https://pipx.pypa.io/) — the installer sets it up if missing
 
-## Quick start
-
-Clone the repository and run the installer:
+## Install
 
 ```bash
-git clone https://github.com/YOUR_ORG/wssh.git
-cd wssh
-bash install.sh
+curl -fsSL https://raw.githubusercontent.com/McKinnonIT/wssh/main/install.sh | bash
 wssh setup
 ```
 
-Or install with pipx only:
+The installer adds Python, pipx, and OpenSSH where they are missing (Homebrew, apt, or dnf), then installs `wssh` with pipx. Set `WSSH_REPO` to install from a fork.
+
+From a clone instead:
 
 ```bash
-git clone https://github.com/YOUR_ORG/wssh.git
+git clone https://github.com/McKinnonIT/wssh.git
 cd wssh
 pipx install .
 wssh setup
 ```
 
-One-liner (after publishing; set `WSSH_REPO` if installing from a fork):
+`wssh setup` asks for your Warpgate host, username, and SSH key, signs you in, and installs shell tab completion. Settings are saved to `~/.wssh/config.yaml` (mode `0600`).
+
+## Usage
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/wssh/main/install.sh | bash
-wssh setup
+wssh dns01                              # open a shell on the target
+wssh dns01 -- systemctl status nginx    # run a remote command
+wssh dns01 -L 8080:localhost:80         # arguments pass through to ssh
 ```
 
-`wssh setup` asks for your Warpgate host, username, SSH key, API token, and shell tab completion. Settings are saved to `~/.wssh/config.yaml`.
+Target names tab-complete once setup has run. Anything that is not a known subcommand is treated as a target name.
 
-Connect to a target:
+If a connection fails, `wssh` checks whether the target exists in Warpgate, whether your account can reach it, and offers to fix role access or run `setup-server`.
 
-```bash
-wssh myserver
-```
+## Commands
 
-Run a remote command:
+| Command | Purpose |
+|---------|---------|
+| `wssh <target> [args…]` | Connect to a target; remaining arguments go to `ssh` |
+| `wssh setup` | First-time setup: host, username, SSH key, sign-in, completion |
+| `wssh setup-server <name>` | Install Warpgate client keys on a server and register it as a target |
+| `wssh auth login` | Sign in and store an API token |
+| `wssh auth logout` | Remove the stored API token |
+| `wssh targets list` | List SSH targets you can access |
+| `wssh targets refresh` | Refresh the local target cache |
+| `wssh credentials add-key` | Upload your SSH public key to Warpgate |
+| `wssh completion bash\|zsh` | Print the completion script |
+| `wssh version` | Show the installed version |
+| `wssh config-path` | Print the active config file path |
 
-```bash
-wssh myserver -- systemctl status nginx
-```
+Useful options:
+
+| Option | Applies to | Purpose |
+|--------|-----------|---------|
+| `--config <path>` | any command | Use a different config file |
+| `--dry-run`, `-n` | `setup`, `setup-server` | Show what would change without doing it |
+| `--manual-credentials` | `setup` | Paste the SSH key in the Warpgate UI instead of uploading via API |
+| `--skip-auth` | `setup` | Skip the sign-in step |
+| `--token <token>` | `auth login` | Store a token you already have |
+| `--no-browser-cookies` | `auth login` | Do not read session cookies from the browser |
+| `--force`, `-f` | `targets list` | Refresh from the API instead of the cache |
+| `--cache-only` | `targets list` | Never hit the API (used by completion) |
+| `--key <path>`, `--label <str>` | `credentials add-key` | Choose which public key to upload, and its label |
+
+Targets are cached under `~/.wssh/cache/` for 24 hours so completion stays fast; `wssh targets refresh` updates it early.
 
 ## Configuration
 
-Config file: `~/.wssh/config.yaml` (override with `WSSH_CONFIG`).
-
-Example:
+Config file: `~/.wssh/config.yaml`.
 
 ```yaml
-user: alice@example.com
-host: bastion.example.com
-port: 2222
-domain: example.com
-server_domain: internal.example.com
+user: alice@example.com          # your Warpgate account
+host: bastion.example.com        # bastion, SSH and HTTPS
+port: 2222                       # Warpgate SSH port
+domain: example.com              # optional: appended to usernames without @
+server_domain: internal.example.com  # optional: DNS suffix for short server names
 api_token: "<your-api-token>"
-default_ssh_user: root
+default_ssh_user: root           # defaults used by setup-server
 default_ssh_port: 22
 ```
 
@@ -70,53 +95,63 @@ Environment variables override file values:
 
 | Variable | Purpose |
 |----------|---------|
+| `WSSH_CONFIG` | Path to the config file |
 | `WSSH_HOST` | Warpgate bastion hostname |
 | `WSSH_PORT` | Warpgate SSH port (default `2222`) |
 | `WSSH_DOMAIN` | Append to usernames without `@` |
 | `WSSH_SERVER_DOMAIN` | DNS suffix for `wssh setup-server` short names |
 | `WSSH_API_TOKEN` | User API token |
-| `WSSH_ADMIN_API_TOKEN` | Admin API token (for `setup-server`) |
+| `WSSH_ADMIN_API_TOKEN` | Admin API token (for `setup-server`; falls back to `WSSH_API_TOKEN`) |
 | `WSSH_WARPGATE_CLIENT_KEYS` | Newline-separated client public keys (offline bootstrap) |
 
-See [`config.example.yaml`](config.example.yaml) for a full template.
+See [`config.example.yaml`](config.example.yaml) for a commented template.
 
 ## Organization presets
 
 Teams can ship **non-secret** defaults (bastion host, email domain, server DNS suffix, default SSH user) without forking `wssh`:
 
-1. Maintain a partial config (see [`config.preset.example.yaml`](config.preset.example.yaml)) — no `api_token` or per-user `user`.
+1. Maintain a partial config — see the preset note in [`config.example.yaml`](config.example.yaml). No `api_token`, `admin_api_token`, or per-user `user`.
 2. Install `wssh` and copy the preset to `~/.wssh/config.yaml`.
-3. Run `wssh setup` — connection prompts are skipped when `host` is already set; staff only complete username, SSH key, API token, and shell completion.
+3. Run `wssh setup` — connection prompts are skipped when `host` is already set, so staff only complete username, SSH key, sign-in, and completion.
 
 Distribute the preset via a private repo and bootstrap script, MDM, or internal wiki. Keep secrets and personal tokens out of shared files.
 
 ## Troubleshooting
 
-If Warpgate sign-in does not finish during setup, complete sign-in in the browser and paste an API token when prompted, or run:
+**Sign-in.** `wssh auth login` opens the Warpgate login page and waits for you to press Enter. It then tries to create an API token automatically; if it cannot, it asks you to paste one from **Profile → API Tokens**.
 
-```bash
-wssh auth login
-```
-
-For automatic API token creation after browser sign-in (optional):
+Automatic token creation needs an optional dependency:
 
 ```bash
 pipx inject wssh browser-cookie3
 ```
 
-To paste your SSH public key in the Warpgate web UI instead of uploading via API:
+**Completion not working.** Make sure the block `wssh setup` added to your rc file is after `compinit` in `.zshrc`, then start a new shell. Re-running `wssh setup` replaces the block rather than stacking a second one.
+
+**`wssh` not found after install.** pipx installs to `~/.local/bin`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"    # add to your rc file
+```
+
+**Key rejected.** Warpgate matches public keys on `<algorithm> <base64>` with no trailing comment. A key uploaded with a comment never authenticates — `wssh credentials add-key` strips it, and reports when an existing entry was stored in the wrong format.
+
+**Uploading your key by hand:**
 
 ```bash
 wssh setup --manual-credentials
 ```
 
-Then run `wssh auth login` if you still need an API token.
-
-Check for install issues (e.g. a legacy shell function shadowing `wssh`):
+## Development
 
 ```bash
-wssh doctor
+python3 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/python -m pytest
+.venv/bin/ruff check src tests
 ```
+
+Lint settings live in `pyproject.toml`. `B008` is ignored because `typer.Option()` in an argument default is how Typer is written.
 
 ## License
 

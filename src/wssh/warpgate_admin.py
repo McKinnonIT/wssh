@@ -17,20 +17,21 @@ from uuid import UUID
 import httpx
 
 from wssh.config import WsshConfig
-from wssh.constants import DEFAULT_TARGET_ROLE
-from wssh.warpgate import WarpgateApiError
+from wssh.warpgate import ApiClient, WarpgateApiError
+
+# Role granted on targets created/updated by wssh setup-server
+# (Warpgate "Allow access for roles")
+DEFAULT_TARGET_ROLE = "admin"
 
 
 def ssh_key_to_openssh(kind: str, public_key_base64: str) -> str:
     """Convert admin API key record to OpenSSH authorized_keys line."""
-    kind_map = {
-        "ssh-ed25519": "ssh-ed25519",
+    # Self-mapping entries dropped — anything already in OpenSSH form passes through.
+    key_type = {
         "ed25519": "ssh-ed25519",
         "rsa": "ssh-rsa",
-        "ssh-rsa": "ssh-rsa",
         "ecdsa": "ecdsa-sha2-nistp256",
-    }
-    key_type = kind_map.get(kind.lower(), kind)
+    }.get(kind.lower(), kind)
     return f"{key_type} {public_key_base64} warpgate"
 
 
@@ -50,24 +51,13 @@ def ssh_target_summary(target: dict[str, Any]) -> str:
     return f"{user}@{host}:{port}"
 
 
-class WarpgateAdminClient:
+class WarpgateAdminClient(ApiClient):
+    forbidden_message = "Admin API access denied — your token may lack admin permissions"
+
     def __init__(self, config: WsshConfig, *, token: str | None = None) -> None:
+        super().__init__(config.admin_api_base)
         self.config = config
         self._token = token or config.effective_admin_token()
-        self._client = httpx.Client(
-            base_url=config.admin_api_base,
-            timeout=30.0,
-            follow_redirects=True,
-        )
-
-    def close(self) -> None:
-        self._client.close()
-
-    def __enter__(self) -> WarpgateAdminClient:
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        self.close()
 
     def _headers(self) -> dict[str, str]:
         if not self._token:
@@ -77,21 +67,6 @@ class WarpgateAdminClient:
             "Content-Type": "application/json",
             "X-Warpgate-Token": self._token,
         }
-
-    def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
-        response = self._client.request(method, path, headers=self._headers(), **kwargs)
-        if response.status_code == 403:
-            raise WarpgateApiError(
-                "Admin API access denied — your token may lack admin permissions",
-                status_code=403,
-            )
-        if response.status_code >= 400:
-            detail = response.text.strip() or response.reason_phrase
-            raise WarpgateApiError(
-                f"{method} {path} failed ({response.status_code}): {detail}",
-                status_code=response.status_code,
-            )
-        return response
 
     def get_ssh_client_keys(self) -> list[str]:
         data = self._request("GET", "/ssh/own-keys").json()
@@ -111,8 +86,18 @@ class WarpgateAdminClient:
                 return target
         return None
 
-    def target_exists(self, name: str) -> bool:
-        return self.find_target_by_name(name) is not None
+    def list_user_public_keys(self, username: str) -> list[dict[str, Any]] | None:
+        """A user's public keys with full key material. None when unavailable."""
+        try:
+            users = self._request("GET", "/users").json()
+            match = next((u for u in users if u.get("username") == username), None)
+            if not match:
+                return None
+            return self._request(
+                "GET", f"/users/{match['id']}/credentials/public-keys"
+            ).json()
+        except (WarpgateApiError, httpx.HTTPError):
+            return None
 
     def list_roles(self) -> list[dict[str, Any]]:
         return self._request("GET", "/roles").json()
@@ -132,20 +117,11 @@ class WarpgateAdminClient:
         return any(str(r.get("id", "")).lower() == rid for r in self.list_target_roles(target_id))
 
     def assign_target_role(self, target_id: str | UUID, role_id: str | UUID) -> None:
-        tid, rid = str(target_id), str(role_id)
-        response = self._client.request(
-            "POST",
-            f"/targets/{tid}/roles/{rid}",
-            headers=self._headers(),
-        )
-        if response.status_code in (201, 409):
-            return
-        if response.status_code >= 400:
-            detail = response.text.strip() or response.reason_phrase
-            raise WarpgateApiError(
-                f"POST /targets/{tid}/roles/{rid} failed ({response.status_code}): {detail}",
-                status_code=response.status_code,
-            )
+        try:
+            self._request("POST", f"/targets/{target_id}/roles/{role_id}")
+        except WarpgateApiError as exc:
+            if exc.status_code != 409:  # 409 = already assigned
+                raise
 
     def ensure_target_role(
         self,
@@ -169,22 +145,14 @@ class WarpgateAdminClient:
         existing: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build TargetOptions for SSH (admin API uses kind Ssh / PublicKey)."""
-        if existing:
-            opts = dict(_parse_ssh_options(existing) or existing.get("options") or {})
-            if opts.get("kind", "").lower() == "ssh" or opts.get("kind") == "Ssh":
-                opts["kind"] = "Ssh"
-                opts["host"] = host
-                opts["port"] = port
-                opts["username"] = username
-                if "auth" not in opts or not opts["auth"]:
-                    opts["auth"] = {"kind": "PublicKey"}
-                return opts
+        opts = dict(_parse_ssh_options(existing or {}))
         return {
+            **opts,
             "kind": "Ssh",
             "host": host,
             "port": port,
             "username": username,
-            "auth": {"kind": "PublicKey"},
+            "auth": opts.get("auth") or {"kind": "PublicKey"},
         }
 
     def _target_body(
@@ -196,26 +164,11 @@ class WarpgateAdminClient:
         description: str = "",
         existing: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        desc = description
-        if existing and not desc:
-            desc = existing.get("description") or ""
-        body: dict[str, Any] = {
+        return {
             "name": name,
-            "description": desc,
+            "description": description or (existing or {}).get("description") or "",
             "options": self._ssh_options(host, port, username, existing),
         }
-        if existing:
-            for field in (
-                "rate_limit_bytes_per_second",
-                "group_id",
-                "ticket_max_duration_seconds",
-                "ticket_requests_disabled",
-                "ticket_require_approval",
-                "ticket_max_uses",
-            ):
-                if field in existing and existing[field] is not None:
-                    body[field] = existing[field]
-        return body
 
     def create_ssh_target(
         self,

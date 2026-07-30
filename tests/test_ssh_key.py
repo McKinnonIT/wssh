@@ -1,6 +1,5 @@
 from wssh.ssh_key import (
     normalize_openssh_public_key,
-    public_key_blob,
     public_key_fingerprint,
     public_key_stored_correctly,
     public_keys_match,
@@ -20,13 +19,12 @@ _LINE_WITH_COMMENT = f"ssh-rsa {_SAMPLE_BLOB} user@workstation.local"
 _LINE_WITHOUT_COMMENT = f"ssh-rsa {_SAMPLE_BLOB}"
 
 
-def test_public_key_blob_ignores_comment() -> None:
-    assert public_key_blob(_LINE_WITH_COMMENT) == _SAMPLE_BLOB
-    assert public_key_blob(_LINE_WITHOUT_COMMENT) == _SAMPLE_BLOB
-
-
 def test_public_keys_match_ignores_comment() -> None:
     assert public_keys_match(_LINE_WITH_COMMENT, _LINE_WITHOUT_COMMENT)
+
+
+def test_public_keys_differ() -> None:
+    assert not public_keys_match(_LINE_WITHOUT_COMMENT, f"ssh-rsa {_SAMPLE_BLOB[:-4]}AAAA")
 
 
 def test_public_key_fingerprint_same_for_comment_variants() -> None:

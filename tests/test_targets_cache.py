@@ -1,13 +1,17 @@
-from datetime import datetime, timedelta, timezone
+import time
 
-from wssh.targets import cache_is_fresh
+from wssh.targets import CACHE_TTL_SECONDS, cache_is_fresh
 
 
 def test_cache_is_fresh() -> None:
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    assert cache_is_fresh({"fetched_at": now}, ttl_hours=24)
+    assert cache_is_fresh({"fetched_at": time.time()})
 
 
 def test_cache_is_stale() -> None:
-    old = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    assert not cache_is_fresh({"fetched_at": old}, ttl_hours=24)
+    assert not cache_is_fresh({"fetched_at": time.time() - CACHE_TTL_SECONDS - 1})
+
+
+def test_cache_missing_or_legacy_iso_timestamp_is_stale() -> None:
+    assert not cache_is_fresh(None)
+    assert not cache_is_fresh({})
+    assert not cache_is_fresh({"fetched_at": "2026-07-30T00:00:00Z"})

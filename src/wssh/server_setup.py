@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import os
-import platform
-import re
 import shlex
-import shutil
 import socket
-import subprocess
-import sys
-from typing import Any, Callable
+from typing import Any
 
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
+
 from wssh.config import WsshConfig, save_config
 from wssh.connect import (
     DIRECT_SSH_CONNECT_TIMEOUT,
@@ -23,10 +19,14 @@ from wssh.connect import (
     run_ssh,
     run_ssh_capture,
 )
-from wssh.constants import DEFAULT_TARGET_ROLE
-from wssh.targets import refresh_targets
+from wssh.ssh_key import copy_to_clipboard
+from wssh.targets import get_target_names
 from wssh.warpgate import WarpgateApiError
-from wssh.warpgate_admin import WarpgateAdminClient, ssh_target_summary
+from wssh.warpgate_admin import (
+    DEFAULT_TARGET_ROLE,
+    WarpgateAdminClient,
+    ssh_target_summary,
+)
 
 console = Console()
 
@@ -53,7 +53,7 @@ def get_client_keys(config: WsshConfig, *, force_refresh: bool = False) -> list[
     return keys
 
 
-def _authorized_keys_shell_lines(keys: list[str]) -> list[str]:
+def _authorized_keys_remote_cmd(keys: list[str]) -> str:
     lines = [
         "set -e",
         "mkdir -p ~/.ssh && chmod 700 ~/.ssh",
@@ -68,124 +68,41 @@ def _authorized_keys_shell_lines(keys: list[str]) -> list[str]:
         lines.append(
             f"grep -qF {q} ~/.ssh/authorized_keys 2>/dev/null || echo {q} >> ~/.ssh/authorized_keys"
         )
-    return lines
+    return " && ".join(lines)
 
 
-def _build_authorized_keys_remote_cmd(keys: list[str]) -> str:
-    return " && ".join(_authorized_keys_shell_lines(keys))
-
-
-def _target_slug(host: str, target_name: str | None) -> str:
-    if target_name:
-        return re.sub(r"[^\w.-]+", "-", target_name)
-    return host.split(".")[0]
-
-
-def _copy_lines_to_clipboard(lines: list[str]) -> bool:
-    """Copy text to the system clipboard (macOS pbcopy, Linux xclip/wl-copy)."""
-    payload = "\n".join(lines)
-    if not payload:
-        return False
-    system = platform.system()
-    if system == "Darwin" and shutil.which("pbcopy"):
-        subprocess.run(["pbcopy"], input=payload, text=True, check=False)
-        return True
-    if system == "Linux":
-        if shutil.which("wl-copy"):
-            subprocess.run(["wl-copy"], input=payload, text=True, check=False)
-            return True
-        if shutil.which("xclip") and os.environ.get("DISPLAY"):
-            subprocess.run(
-                ["xclip", "-selection", "clipboard"],
-                input=payload,
-                text=True,
-                check=False,
-            )
-            return True
-    return False
-
-
-def _print_copyable_key_line(key: str) -> None:
-    """Print one SSH public key without Rich wrapping (must stay a single line)."""
-    # Plain stdout avoids Rich's terminal width; user may still need to widen the window.
-    sys.stdout.write(key + "\n")
-    sys.stdout.flush()
-
-
-def _print_manual_keys_instructions(
-    ssh_user: str,
-    keys: list[str],
-    *,
-    host: str,
-    target_name: str | None,
-) -> None:
-    slug = _target_slug(host, target_name)
-    console.print(
-        f"\n[bold]Manual steps[/bold] (on the server as [bold]{ssh_user}[/bold]):\n"
-    )
-    console.print("  1. [dim]mkdir -p ~/.ssh && chmod 700 ~/.ssh[/dim]")
-    console.print("  2. [dim]touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys[/dim]")
-    console.print(
-        f"  3. Add {len(keys)} Warpgate key(s) to [bold]~/.ssh/authorized_keys[/bold] "
-        "(each key is exactly [bold]one line[/bold], no line breaks inside a key):\n"
-    )
-
-    if _copy_lines_to_clipboard(keys):
-        console.print(
-            f"     [green]Copied {len(keys)} key(s) to clipboard[/green] — "
-            "paste into the file on the server (one key per line)\n"
-        )
-    else:
-        console.print(
-            "     [dim]Copy each line below in full (widen the terminal if it wraps):[/dim]\n"
-        )
-        for index, key in enumerate(keys, start=1):
-            key_type = key.split()[0] if key.split() else "key"
-            console.print(f"     [bold]Key {index}[/bold] ({key_type}):")
-            _print_copyable_key_line(key)
-            console.print("")
-
-    console.print(f"  4. Run [bold]wssh setup-server {slug}[/bold] again\n")
+_BLOCKED_REASON = {
+    "timeout": "timed out from your network",
+    "unreachable": "not reachable via direct SSH",
+    "host_key": "unknown host key — run [bold]ssh {dest}[/bold] once, or use console access",
+    "auth": "no password login available — use console access or an existing key",
+    "install_failed": "the install command failed",
+}
 
 
 def _print_keys_install_blocked(
     dest: str,
     ssh_user: str,
-    host: str,
     keys: list[str],
     *,
-    target_name: str | None = None,
     reason: str,
 ) -> None:
-    """Explain why automatic key install failed; offer manual steps."""
-    detail = {
-        "timeout": f"{dest} — timed out from your network",
-        "unreachable": f"{dest} — not reachable via direct SSH",
-        "host_key": (
-            f"{dest} — accept the host key locally first "
-            f"([bold]ssh {dest}[/bold]), or use console access"
-        ),
-        "auth": (
-            f"{dest} — server may not allow password login; "
-            "use console or an existing key"
-        ),
-        "install_failed": dest,
-    }.get(reason, dest)
-
+    """Explain why automatic key install failed, and how to do it by hand."""
     console.print("\n[bold red]✗ Could not install Warpgate keys from here[/bold red]")
-    console.print(f"  [dim]{detail}[/dim]")
+    console.print(f"  [dim]{dest} — {_BLOCKED_REASON.get(reason, reason).format(dest=dest)}[/dim]")
+    console.print("  [dim]Warpgate may still reach this host — you can register it anyway.[/dim]")
+    console.print(f"\n[bold]To install by hand[/bold], on the server as [bold]{ssh_user}[/bold]:")
+    console.print("  [dim]mkdir -p ~/.ssh && chmod 700 ~/.ssh[/dim]")
+    console.print("  [dim]touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys[/dim]")
     console.print(
-        "  [dim]Warpgate may still reach this host — you can register it anyway.[/dim]"
+        f"  Append these {len(keys)} key(s), one line each (no line breaks inside a key):\n"
     )
-
-    if Confirm.ask("Show manual install instructions?", default=False):
-        _print_manual_keys_instructions(
-            ssh_user, keys, host=host, target_name=target_name
-        )
+    if copy_to_clipboard("\n".join(keys)):
+        console.print(f"  [green]Copied {len(keys)} key(s) to clipboard[/green]\n")
     else:
-        console.print(
-            "\n  [dim]Add keys on the server if needed, then continue Warpgate setup below.[/dim]\n"
-        )
+        for key in keys:
+            print(key)  # plain stdout: Rich would wrap a key that must stay one line
+        console.print("")
 
 
 def install_authorized_keys(
@@ -195,7 +112,6 @@ def install_authorized_keys(
     keys: list[str],
     *,
     dry_run: bool = False,
-    target_name: str | None = None,
 ) -> bool:
     """Append Warpgate client keys in a single SSH session (one password prompt).
 
@@ -217,21 +133,14 @@ def install_authorized_keys(
     )
     probe = probe_direct_ssh(user, host, port)
     if probe in ("timeout", "unreachable", "host_key"):
-        _print_keys_install_blocked(
-            dest,
-            user,
-            host,
-            stripped_keys,
-            target_name=target_name,
-            reason=probe,
-        )
+        _print_keys_install_blocked(dest, user, stripped_keys, reason=probe)
         return False
 
     console.print(
         f"  [dim]One SSH login to {dest} "
         "(enter password once if prompted; sudo only if needed)[/dim]"
     )
-    remote_cmd = _build_authorized_keys_remote_cmd(stripped_keys)
+    remote_cmd = _authorized_keys_remote_cmd(stripped_keys)
     code = run_direct_ssh(user, host, port, remote_cmd)
     if code != 0:
         console.print("  [dim]Retrying with sudo support…[/dim]")
@@ -241,13 +150,13 @@ def install_authorized_keys(
         _print_keys_install_blocked(
             dest,
             user,
-            host,
             stripped_keys,
-            target_name=target_name,
             reason="auth" if probe == "auth" else "install_failed",
         )
         return False
-    console.print(f"  [green]authorized_keys updated ({len(stripped_keys)} Warpgate key(s))[/green]")
+    console.print(
+        f"  [green]authorized_keys updated ({len(stripped_keys)} Warpgate key(s))[/green]"
+    )
     return True
 
 
@@ -276,7 +185,9 @@ def _register_or_update_target(
         ):
             target_id = existing.get("id")
             if not target_id:
-                console.print("[red]Could not read target id — update manually in Warpgate admin[/red]")
+                console.print(
+                    "[red]Could not read target id — update manually in Warpgate admin[/red]"
+                )
                 return
             admin.update_ssh_target(
                 target_id, name, host, port, username, existing=existing
@@ -313,7 +224,8 @@ def _ensure_target_role_access(
     if not target_id:
         console.print(
             f"[yellow]Could not resolve target id for '{name}' — enable "
-            f"[bold]Allow access for roles → {DEFAULT_TARGET_ROLE}[/bold] in Warpgate admin.[/yellow]"
+            f"[bold]Allow access for roles → {DEFAULT_TARGET_ROLE}[/bold] "
+            "in Warpgate admin.[/yellow]"
         )
         return
     try:
@@ -350,9 +262,10 @@ def try_fix_target_role_access(config: WsshConfig, target: str) -> bool:
                 )
                 return True
             console.print(
-                f"[green]Granted [bold]{DEFAULT_TARGET_ROLE}[/bold] role access on '{target}'[/green]"
+                f"[green]Granted [bold]{DEFAULT_TARGET_ROLE}[/bold] "
+                f"role access on '{target}'[/green]"
             )
-            refresh_targets(config)
+            get_target_names(config, force_refresh=True)
             return True
     except WarpgateApiError as exc:
         console.print(f"[yellow]Could not update role access: {exc}[/yellow]")
@@ -371,8 +284,10 @@ def explain_target_not_visible(config: WsshConfig, target: str) -> bool:
         return False
 
     console.print(
-        f"\n[yellow]Target '{target}' exists in Warpgate but your account cannot access it yet.[/yellow]\n"
-        f"Enable [bold]Allow access for roles → {DEFAULT_TARGET_ROLE}[/bold] in the Warpgate admin UI, "
+        f"\n[yellow]Target '{target}' exists in Warpgate but your account "
+        "cannot access it yet.[/yellow]\n"
+        f"Enable [bold]Allow access for roles → {DEFAULT_TARGET_ROLE}[/bold] "
+        "in the Warpgate admin UI, "
         f"or run [bold]wssh setup-server {target}[/bold] to fix it automatically."
     )
     return True
@@ -404,7 +319,6 @@ def setup_server_interactive(
     name: str,
     *,
     dry_run: bool = False,
-    on_complete: Callable[[], None] | None = None,
 ) -> None:
     console.print(f"\n[bold]Set up Warpgate for [cyan]{name}[/cyan][/bold]\n")
 
@@ -420,14 +334,13 @@ def setup_server_interactive(
     except WarpgateApiError as exc:
         console.print(f"[red]{exc}[/red]")
         console.print(
-            "Set [bold]WSSH_WARPGATE_CLIENT_KEYS[/bold] or ask your administrator for Warpgate client keys."
+            "Set [bold]WSSH_WARPGATE_CLIENT_KEYS[/bold] or ask your administrator "
+            "for Warpgate client keys."
         )
         raise SystemExit(1) from exc
 
     console.print(f"Installing {len(keys)} Warpgate client key(s) on {ssh_user}@{host}…")
-    keys_installed = install_authorized_keys(
-        ssh_user, host, ssh_port, keys, dry_run=dry_run, target_name=name
-    )
+    keys_installed = install_authorized_keys(ssh_user, host, ssh_port, keys, dry_run=dry_run)
     if not keys_installed:
         if not Confirm.ask(
             "Continue Warpgate setup anyway? "
@@ -460,7 +373,7 @@ def setup_server_interactive(
     save_config(config)
 
     try:
-        refresh_targets(config)
+        get_target_names(config, force_refresh=True)
     except WarpgateApiError:
         pass
 
@@ -475,9 +388,6 @@ def setup_server_interactive(
         console.print(
             f"If keys are on the server, try: [bold]wssh {name}[/bold]"
         )
-
-    if on_complete:
-        on_complete()
 
 
 def _target_registered_in_warpgate(config: WsshConfig, name: str) -> bool:
@@ -495,10 +405,11 @@ def _offer_retry_or_setup(
     config: WsshConfig,
     target: str,
     *,
-    message: str,
+    message: str = "",
 ) -> bool:
     """Target exists in Warpgate but SSH failed — retry or optional full setup."""
-    console.print(f"\n[yellow]{message}[/yellow]")
+    if message:
+        console.print(f"\n[yellow]{message}[/yellow]")
     if try_fix_target_role_access(config, target):
         return True
     if Confirm.ask("Retry connection?", default=True):
@@ -521,17 +432,7 @@ def maybe_offer_setup(
         return False
 
     if error_kind == "unknown_target" and explain_target_not_visible(config, target):
-        if try_fix_target_role_access(config, target):
-            return True
-        if Confirm.ask("Retry connection?", default=True):
-            return True
-        if Confirm.ask(
-            f"Run [bold]wssh setup-server {target}[/bold] to fix keys and target settings?",
-            default=False,
-        ):
-            setup_server_interactive(config, target)
-            return True
-        return False
+        return _offer_retry_or_setup(config, target)
 
     if _target_registered_in_warpgate(config, target):
         return _offer_retry_or_setup(
