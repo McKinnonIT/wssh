@@ -29,8 +29,21 @@ def test_captured_ssh_never_prompts(monkeypatch) -> None:
     assert "BatchMode=yes" in seen["cmd"]
     assert seen["kwargs"].get("stdin") is not None, "captured ssh must not inherit stdin"
 
-    # The interactive path must stay interactive — password auth is still valid there.
+    # The interactive path stays interactive, but still cannot reach a password prompt.
     assert "BatchMode=yes" not in _bastion_ssh_cmd(config, "fms03", [])
+
+
+def test_bastion_never_offers_password_auth() -> None:
+    """wssh registers your key with Warpgate; a password prompt is never the way in."""
+    cmd = _bastion_ssh_cmd(WsshConfig(user="a@x.com", host="bastion", port=2222), "fms03", [])
+    assert "PreferredAuthentications=publickey" in cmd
+
+
+def test_setup_server_bootstrap_still_allows_a_password() -> None:
+    """Installing Warpgate's keys on a fresh host is exactly when a password is needed."""
+    cmd = " ".join(_direct_ssh_base(22))
+    assert "PreferredAuthentications" not in cmd
+    assert "BatchMode=no" in cmd
 
 
 def test_probe_direct_ssh_timeout(monkeypatch) -> None:

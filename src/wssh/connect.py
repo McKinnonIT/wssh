@@ -44,11 +44,16 @@ def bastion_destination(config: WsshConfig, target: str) -> str:
 def _ssh_base_cmd(config: WsshConfig, *, batch_mode: bool = False) -> list[str]:
     """Build ssh argv with identity file matching the key uploaded to Warpgate.
 
-    ``batch_mode`` forbids every interactive prompt. Required whenever output is
-    captured: a password prompt written to a pipe is invisible, so the terminal
-    just hangs on input the user cannot see.
+    Public key only. wssh registers your key with Warpgate, so a password prompt
+    here is never the way in — Warpgate offers keyboard-interactive and ssh would
+    otherwise stop and ask for a password no one can supply. Failing straight to
+    ``Permission denied (publickey)`` is both faster and diagnosable.
+
+    ``batch_mode`` additionally forbids every interactive prompt. Required
+    whenever output is captured: a prompt written to a pipe is invisible, so the
+    terminal just hangs on input the user cannot see.
     """
-    cmd = ["ssh", "-p", str(config.port)]
+    cmd = ["ssh", "-p", str(config.port), "-o", "PreferredAuthentications=publickey"]
     if batch_mode:
         cmd.extend(["-o", "BatchMode=yes"])
     pub = find_public_key()
