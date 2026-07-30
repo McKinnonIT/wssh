@@ -150,7 +150,8 @@ def format_ssh_hint(stderr: str, *, target: str | None = None, stdout: str = "")
             "  • Warpgate target points at the wrong host or SSH user (run [bold]wssh setup-server "
             f"{target}[/bold] to fix)\n"
             "  • Warpgate client keys are not in that user's [bold]authorized_keys[/bold]\n"
-            "  • Your SSH key is not registered in Warpgate (run [bold]wssh credentials add-key[/bold])"
+            "  • Your SSH key is not registered in Warpgate "
+            "(run [bold]wssh credentials add-key[/bold])"
         )
     if kind == "unknown_target" and target:
         return f"Target [bold]{target}[/bold] is not registered in Warpgate."

@@ -154,7 +154,9 @@ def install_authorized_keys(
             reason="auth" if probe == "auth" else "install_failed",
         )
         return False
-    console.print(f"  [green]authorized_keys updated ({len(stripped_keys)} Warpgate key(s))[/green]")
+    console.print(
+        f"  [green]authorized_keys updated ({len(stripped_keys)} Warpgate key(s))[/green]"
+    )
     return True
 
 
@@ -183,7 +185,9 @@ def _register_or_update_target(
         ):
             target_id = existing.get("id")
             if not target_id:
-                console.print("[red]Could not read target id — update manually in Warpgate admin[/red]")
+                console.print(
+                    "[red]Could not read target id — update manually in Warpgate admin[/red]"
+                )
                 return
             admin.update_ssh_target(
                 target_id, name, host, port, username, existing=existing
@@ -220,7 +224,8 @@ def _ensure_target_role_access(
     if not target_id:
         console.print(
             f"[yellow]Could not resolve target id for '{name}' — enable "
-            f"[bold]Allow access for roles → {DEFAULT_TARGET_ROLE}[/bold] in Warpgate admin.[/yellow]"
+            f"[bold]Allow access for roles → {DEFAULT_TARGET_ROLE}[/bold] "
+            "in Warpgate admin.[/yellow]"
         )
         return
     try:
@@ -257,7 +262,8 @@ def try_fix_target_role_access(config: WsshConfig, target: str) -> bool:
                 )
                 return True
             console.print(
-                f"[green]Granted [bold]{DEFAULT_TARGET_ROLE}[/bold] role access on '{target}'[/green]"
+                f"[green]Granted [bold]{DEFAULT_TARGET_ROLE}[/bold] "
+                f"role access on '{target}'[/green]"
             )
             get_target_names(config, force_refresh=True)
             return True
@@ -278,8 +284,10 @@ def explain_target_not_visible(config: WsshConfig, target: str) -> bool:
         return False
 
     console.print(
-        f"\n[yellow]Target '{target}' exists in Warpgate but your account cannot access it yet.[/yellow]\n"
-        f"Enable [bold]Allow access for roles → {DEFAULT_TARGET_ROLE}[/bold] in the Warpgate admin UI, "
+        f"\n[yellow]Target '{target}' exists in Warpgate but your account "
+        "cannot access it yet.[/yellow]\n"
+        f"Enable [bold]Allow access for roles → {DEFAULT_TARGET_ROLE}[/bold] "
+        "in the Warpgate admin UI, "
         f"or run [bold]wssh setup-server {target}[/bold] to fix it automatically."
     )
     return True
@@ -326,7 +334,8 @@ def setup_server_interactive(
     except WarpgateApiError as exc:
         console.print(f"[red]{exc}[/red]")
         console.print(
-            "Set [bold]WSSH_WARPGATE_CLIENT_KEYS[/bold] or ask your administrator for Warpgate client keys."
+            "Set [bold]WSSH_WARPGATE_CLIENT_KEYS[/bold] or ask your administrator "
+            "for Warpgate client keys."
         )
         raise SystemExit(1) from exc
 

@@ -84,7 +84,8 @@ def zsh_completion() -> str:
     tree = command_tree()
     targets_literal = " ".join(_zsh_quote(n) for n in _target_names())
     commands_literal = "\n".join(
-        f"        {_zsh_quote(f'{name}:{help_text}')}" for name, (help_text, _) in sorted(tree.items())
+        f"        {_zsh_quote(f'{name}:{help_text}')}"
+        for name, (help_text, _) in sorted(tree.items())
     )
     cases = "\n".join(
         f"""                {name})

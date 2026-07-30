@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -43,7 +42,7 @@ app.add_typer(targets_app, name="targets")
 app.add_typer(credentials_app, name="credentials")
 
 console = Console()
-_state_config_path: Optional[Path] = None
+_state_config_path: Path | None = None
 
 
 def _parse_global_flags(argv: list[str]) -> list[str]:
@@ -95,7 +94,7 @@ def setup_cmd(
 
 @auth_app.command("login")
 def auth_login(
-    token: Optional[str] = typer.Option(None, "--token", help="Paste an existing API token"),
+    token: str | None = typer.Option(None, "--token", help="Paste an existing API token"),
     no_browser_cookies: bool = typer.Option(
         False,
         "--no-browser-cookies",
@@ -148,8 +147,8 @@ def targets_refresh_cmd() -> None:
 
 @credentials_app.command("add-key")
 def credentials_add_key(
-    key_path: Optional[Path] = typer.Option(None, "--key", help="Path to .pub file"),
-    label: Optional[str] = typer.Option(None, "--label"),
+    key_path: Path | None = typer.Option(None, "--key", help="Path to .pub file"),
+    label: str | None = typer.Option(None, "--label"),
 ) -> None:
     """Upload your SSH public key to Warpgate."""
     config = _config()

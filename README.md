@@ -148,7 +148,10 @@ wssh setup --manual-credentials
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/python -m pytest
+.venv/bin/ruff check src tests
 ```
+
+Lint settings live in `pyproject.toml`. `B008` is ignored because `typer.Option()` in an argument default is how Typer is written.
 
 ## License
 
