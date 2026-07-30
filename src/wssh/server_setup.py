@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import os
-import platform
 import re
 import shlex
-import shutil
 import socket
-import subprocess
-import sys
-from typing import Any, Callable
+from typing import Any
 
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
@@ -24,7 +20,8 @@ from wssh.connect import (
     run_ssh_capture,
 )
 from wssh.constants import DEFAULT_TARGET_ROLE
-from wssh.targets import refresh_targets
+from wssh.ssh_key import copy_to_clipboard
+from wssh.targets import get_target_names
 from wssh.warpgate import WarpgateApiError
 from wssh.warpgate_admin import WarpgateAdminClient, ssh_target_summary
 
@@ -53,7 +50,7 @@ def get_client_keys(config: WsshConfig, *, force_refresh: bool = False) -> list[
     return keys
 
 
-def _authorized_keys_shell_lines(keys: list[str]) -> list[str]:
+def _authorized_keys_remote_cmd(keys: list[str]) -> str:
     lines = [
         "set -e",
         "mkdir -p ~/.ssh && chmod 700 ~/.ssh",
@@ -68,48 +65,13 @@ def _authorized_keys_shell_lines(keys: list[str]) -> list[str]:
         lines.append(
             f"grep -qF {q} ~/.ssh/authorized_keys 2>/dev/null || echo {q} >> ~/.ssh/authorized_keys"
         )
-    return lines
-
-
-def _build_authorized_keys_remote_cmd(keys: list[str]) -> str:
-    return " && ".join(_authorized_keys_shell_lines(keys))
+    return " && ".join(lines)
 
 
 def _target_slug(host: str, target_name: str | None) -> str:
     if target_name:
         return re.sub(r"[^\w.-]+", "-", target_name)
     return host.split(".")[0]
-
-
-def _copy_lines_to_clipboard(lines: list[str]) -> bool:
-    """Copy text to the system clipboard (macOS pbcopy, Linux xclip/wl-copy)."""
-    payload = "\n".join(lines)
-    if not payload:
-        return False
-    system = platform.system()
-    if system == "Darwin" and shutil.which("pbcopy"):
-        subprocess.run(["pbcopy"], input=payload, text=True, check=False)
-        return True
-    if system == "Linux":
-        if shutil.which("wl-copy"):
-            subprocess.run(["wl-copy"], input=payload, text=True, check=False)
-            return True
-        if shutil.which("xclip") and os.environ.get("DISPLAY"):
-            subprocess.run(
-                ["xclip", "-selection", "clipboard"],
-                input=payload,
-                text=True,
-                check=False,
-            )
-            return True
-    return False
-
-
-def _print_copyable_key_line(key: str) -> None:
-    """Print one SSH public key without Rich wrapping (must stay a single line)."""
-    # Plain stdout avoids Rich's terminal width; user may still need to widen the window.
-    sys.stdout.write(key + "\n")
-    sys.stdout.flush()
 
 
 def _print_manual_keys_instructions(
@@ -130,7 +92,7 @@ def _print_manual_keys_instructions(
         "(each key is exactly [bold]one line[/bold], no line breaks inside a key):\n"
     )
 
-    if _copy_lines_to_clipboard(keys):
+    if copy_to_clipboard("\n".join(keys)):
         console.print(
             f"     [green]Copied {len(keys)} key(s) to clipboard[/green] — "
             "paste into the file on the server (one key per line)\n"
@@ -142,7 +104,7 @@ def _print_manual_keys_instructions(
         for index, key in enumerate(keys, start=1):
             key_type = key.split()[0] if key.split() else "key"
             console.print(f"     [bold]Key {index}[/bold] ({key_type}):")
-            _print_copyable_key_line(key)
+            print(key)  # plain stdout: Rich would wrap a key that must stay one line
             console.print("")
 
     console.print(f"  4. Run [bold]wssh setup-server {slug}[/bold] again\n")
@@ -231,7 +193,7 @@ def install_authorized_keys(
         f"  [dim]One SSH login to {dest} "
         "(enter password once if prompted; sudo only if needed)[/dim]"
     )
-    remote_cmd = _build_authorized_keys_remote_cmd(stripped_keys)
+    remote_cmd = _authorized_keys_remote_cmd(stripped_keys)
     code = run_direct_ssh(user, host, port, remote_cmd)
     if code != 0:
         console.print("  [dim]Retrying with sudo support…[/dim]")
@@ -352,7 +314,7 @@ def try_fix_target_role_access(config: WsshConfig, target: str) -> bool:
             console.print(
                 f"[green]Granted [bold]{DEFAULT_TARGET_ROLE}[/bold] role access on '{target}'[/green]"
             )
-            refresh_targets(config)
+            get_target_names(config, force_refresh=True)
             return True
     except WarpgateApiError as exc:
         console.print(f"[yellow]Could not update role access: {exc}[/yellow]")
@@ -404,7 +366,6 @@ def setup_server_interactive(
     name: str,
     *,
     dry_run: bool = False,
-    on_complete: Callable[[], None] | None = None,
 ) -> None:
     console.print(f"\n[bold]Set up Warpgate for [cyan]{name}[/cyan][/bold]\n")
 
@@ -460,7 +421,7 @@ def setup_server_interactive(
     save_config(config)
 
     try:
-        refresh_targets(config)
+        get_target_names(config, force_refresh=True)
     except WarpgateApiError:
         pass
 
@@ -475,9 +436,6 @@ def setup_server_interactive(
         console.print(
             f"If keys are on the server, try: [bold]wssh {name}[/bold]"
         )
-
-    if on_complete:
-        on_complete()
 
 
 def _target_registered_in_warpgate(config: WsshConfig, name: str) -> bool:
@@ -495,10 +453,11 @@ def _offer_retry_or_setup(
     config: WsshConfig,
     target: str,
     *,
-    message: str,
+    message: str = "",
 ) -> bool:
     """Target exists in Warpgate but SSH failed — retry or optional full setup."""
-    console.print(f"\n[yellow]{message}[/yellow]")
+    if message:
+        console.print(f"\n[yellow]{message}[/yellow]")
     if try_fix_target_role_access(config, target):
         return True
     if Confirm.ask("Retry connection?", default=True):
@@ -521,17 +480,7 @@ def maybe_offer_setup(
         return False
 
     if error_kind == "unknown_target" and explain_target_not_visible(config, target):
-        if try_fix_target_role_access(config, target):
-            return True
-        if Confirm.ask("Retry connection?", default=True):
-            return True
-        if Confirm.ask(
-            f"Run [bold]wssh setup-server {target}[/bold] to fix keys and target settings?",
-            default=False,
-        ):
-            setup_server_interactive(config, target)
-            return True
-        return False
+        return _offer_retry_or_setup(config, target)
 
     if _target_registered_in_warpgate(config, target):
         return _offer_retry_or_setup(

@@ -112,12 +112,6 @@ wssh setup --manual-credentials
 
 Then run `wssh auth login` if you still need an API token.
 
-Check for install issues (e.g. a legacy shell function shadowing `wssh`):
-
-```bash
-wssh doctor
-```
-
 ## License
 
 MIT — see [LICENSE](LICENSE).

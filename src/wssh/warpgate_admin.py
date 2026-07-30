@@ -23,14 +23,12 @@ from wssh.warpgate import WarpgateApiError
 
 def ssh_key_to_openssh(kind: str, public_key_base64: str) -> str:
     """Convert admin API key record to OpenSSH authorized_keys line."""
-    kind_map = {
-        "ssh-ed25519": "ssh-ed25519",
+    # Self-mapping entries dropped — anything already in OpenSSH form passes through.
+    key_type = {
         "ed25519": "ssh-ed25519",
         "rsa": "ssh-rsa",
-        "ssh-rsa": "ssh-rsa",
         "ecdsa": "ecdsa-sha2-nistp256",
-    }
-    key_type = kind_map.get(kind.lower(), kind)
+    }.get(kind.lower(), kind)
     return f"{key_type} {public_key_base64} warpgate"
 
 
@@ -111,8 +109,18 @@ class WarpgateAdminClient:
                 return target
         return None
 
-    def target_exists(self, name: str) -> bool:
-        return self.find_target_by_name(name) is not None
+    def list_user_public_keys(self, username: str) -> list[dict[str, Any]] | None:
+        """A user's public keys with full key material. None when unavailable."""
+        try:
+            users = self._request("GET", "/users").json()
+            match = next((u for u in users if u.get("username") == username), None)
+            if not match:
+                return None
+            return self._request(
+                "GET", f"/users/{match['id']}/credentials/public-keys"
+            ).json()
+        except (WarpgateApiError, httpx.HTTPError):
+            return None
 
     def list_roles(self) -> list[dict[str, Any]]:
         return self._request("GET", "/roles").json()
@@ -171,7 +179,7 @@ class WarpgateAdminClient:
         """Build TargetOptions for SSH (admin API uses kind Ssh / PublicKey)."""
         if existing:
             opts = dict(_parse_ssh_options(existing) or existing.get("options") or {})
-            if opts.get("kind", "").lower() == "ssh" or opts.get("kind") == "Ssh":
+            if opts.get("kind", "").lower() == "ssh":
                 opts["kind"] = "Ssh"
                 opts["host"] = host
                 opts["port"] = port

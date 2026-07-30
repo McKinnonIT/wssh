@@ -65,15 +65,6 @@ ensure_pipx() {
     need_cmd pipx || err "pipx not on PATH — open a new shell or run: export PATH=\"\${HOME}/.local/bin:\${PATH}\""
 }
 
-warn_legacy_shell_function() {
-    if type wssh 2>/dev/null | grep -qE 'function|alias'; then
-        echo ""
-        echo "WARNING: A legacy wssh shell function is still loaded." >&2
-        echo "  Remove the 'warpgate wssh wrapper' block from ~/.zshrc, then: source ~/.zshrc" >&2
-        echo ""
-    fi
-}
-
 main() {
     if [ "$(id -u)" -eq 0 ]; then
         err "Don't run as root. Run as your normal user."
@@ -82,7 +73,6 @@ main() {
     install_system_packages
     ensure_python
     ensure_pipx
-    warn_legacy_shell_function
 
     echo "Installing wssh from ${WSSH_REPO}…"
     pipx install --force "$WSSH_GIT_SPEC"

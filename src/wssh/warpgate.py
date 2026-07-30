@@ -74,18 +74,6 @@ class WarpgateClient:
             )
         return response
 
-    def get_sso_providers(self) -> list[dict[str, Any]]:
-        return self._request("GET", "/sso/providers", use_token=False).json()
-
-    def start_sso(self, provider: str, next_url: str) -> str:
-        response = self._request(
-            "GET",
-            f"/sso/providers/{provider}/start",
-            use_token=False,
-            params={"next": next_url},
-        )
-        return response.json()["url"]
-
     def get_credentials(self) -> dict[str, Any]:
         return self._request("GET", "/profile/credentials").json()
 
@@ -117,49 +105,21 @@ class WarpgateClient:
             return False
 
     def _list_public_keys_with_material(self) -> list[dict[str, Any]]:
-        """Registered public keys that include full OpenSSH lines when available."""
-        admin_keys = self._admin_list_public_keys()
-        if admin_keys is not None:
-            return admin_keys
+        """Registered public keys that include full OpenSSH lines when available.
+
+        The user API abbreviates key material, so prefer the admin API when a token
+        allows it and fall back to the user's own credentials.
+        """
+        # Imported here: warpgate_admin imports WarpgateApiError from this module.
+        from wssh.warpgate_admin import WarpgateAdminClient
+
+        if self.config.effective_admin_token() and self.config.user.strip():
+            with WarpgateAdminClient(self.config) as admin:
+                admin_keys = admin.list_user_public_keys(self.config.user.strip())
+            if admin_keys is not None:
+                return admin_keys
         creds = self.get_credentials()
         return list(creds.get("public_keys") or creds.get("publicKeys") or [])
-
-    def _admin_list_public_keys(self) -> list[dict[str, Any]] | None:
-        """Fetch this user's public keys via admin API (includes full key material)."""
-        token = self.config.effective_admin_token()
-        username = self.config.user.strip()
-        if not token or not username:
-            return None
-        try:
-            with httpx.Client(
-                base_url=self.config.admin_api_base,
-                timeout=30.0,
-                headers={
-                    "Accept": "application/json",
-                    "X-Warpgate-Token": token,
-                },
-            ) as admin:
-                users_resp = admin.get("/users")
-                if users_resp.status_code >= 400:
-                    return None
-                match = next(
-                    (
-                        u
-                        for u in users_resp.json()
-                        if u.get("username") == username
-                    ),
-                    None,
-                )
-                if not match:
-                    return None
-                keys_resp = admin.get(
-                    f"/users/{match['id']}/credentials/public-keys"
-                )
-                if keys_resp.status_code >= 400:
-                    return None
-                return keys_resp.json()
-        except httpx.HTTPError:
-            return None
 
     def find_matching_public_key(self, openssh_line: str) -> dict[str, Any] | None:
         """Return an existing Warpgate key entry with the same key material, if any."""
@@ -171,6 +131,3 @@ class WarpgateClient:
             if public_keys_match(normalized, full.strip()):
                 return entry
         return None
-
-    def public_key_already_registered(self, openssh_line: str) -> bool:
-        return self.find_matching_public_key(openssh_line) is not None

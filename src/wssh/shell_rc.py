@@ -7,7 +7,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from wssh.constants import COMPLETION_BEGIN, COMPLETION_END, LEGACY_WRAPPER_BEGIN, LEGACY_WRAPPER_END
+from wssh.constants import COMPLETION_BEGIN, COMPLETION_END
 
 
 def detect_rc_file() -> Path:
@@ -26,31 +26,21 @@ def detect_shell_name() -> str:
     return os.path.basename(os.environ.get("SHELL", "bash"))
 
 
-def _remove_block(content: str, begin: str, end: str) -> str:
-    lines = content.splitlines(keepends=True)
-    out: list[str] = []
-    skip = False
-    for line in lines:
-        if begin in line:
-            skip = True
-            continue
-        if end in line:
-            skip = False
-            continue
-        if not skip:
-            out.append(line)
-    return "".join(out)
-
-
-def remove_marked_blocks(path: Path) -> bool:
+def remove_completion_block(path: Path) -> bool:
+    """Strip a previously installed wssh completion block. True if the file changed."""
     if not path.is_file():
         return False
     original = path.read_text(encoding="utf-8")
-    updated = _remove_block(
-        _remove_block(original, LEGACY_WRAPPER_BEGIN, LEGACY_WRAPPER_END),
-        COMPLETION_BEGIN,
-        COMPLETION_END,
-    )
+    out: list[str] = []
+    skip = False
+    for line in original.splitlines(keepends=True):
+        if COMPLETION_BEGIN in line:
+            skip = True
+        elif COMPLETION_END in line:
+            skip = False
+        elif not skip:
+            out.append(line)
+    updated = "".join(out)
     if updated != original:
         path.write_text(updated, encoding="utf-8")
         return True
@@ -80,12 +70,9 @@ def completion_block(shell: str) -> str:
 
 def install_completion(path: Path, shell: str, dry_run: bool = False) -> None:
     block = completion_block(shell)
-    if path.is_file() and COMPLETION_BEGIN in path.read_text(encoding="utf-8"):
-        if dry_run:
-            return
-        remove_marked_blocks(path)
     if dry_run:
         return
+    remove_completion_block(path)
     if path.is_file():
         backup = path.with_suffix(path.suffix + f".bak.{datetime.now():%Y%m%d%H%M%S}")
         shutil.copy2(path, backup)

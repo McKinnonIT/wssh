@@ -65,7 +65,6 @@ _wssh() {{
         'targets:List Warpgate targets'
         'completion:Shell completion scripts'
         'credentials:Manage credentials'
-        'doctor:Check install issues'
         'version:Show version'
     )
     targets=({targets_literal})

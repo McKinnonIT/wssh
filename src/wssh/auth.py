@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import socket
 import threading
 import webbrowser
 from datetime import datetime, timedelta, timezone
@@ -18,17 +17,6 @@ from wssh.warpgate import WarpgateApiError, WarpgateClient
 console = Console()
 
 CALLBACK_TIMEOUT_SECONDS = 300
-
-
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
-
-
-def _login_page_url(config: WsshConfig, callback_url: str) -> str:
-    """Warpgate web UI login URL with a local callback for sign-in completion."""
-    return f"{config.login_url}?next={quote(callback_url, safe='')}"
 
 
 def _try_browser_session_cookie(host: str) -> str | None:
@@ -47,8 +35,8 @@ def _try_browser_session_cookie(host: str) -> str | None:
     return None
 
 
-def _wait_for_callback(port: int, path: str = "/done") -> bool:
-    """Block until the browser hits the local callback URL. Returns False on timeout."""
+def _start_callback_server(path: str = "/done") -> tuple[HTTPServer, threading.Event]:
+    """Serve the local sign-in callback on a free port. Event fires when the browser hits it."""
     done = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
@@ -69,13 +57,10 @@ def _wait_for_callback(port: int, path: str = "/done") -> bool:
         def log_message(self, format: str, *args: object) -> None:
             return
 
-    server = HTTPServer(("127.0.0.1", port), Handler)
+    server = HTTPServer(("127.0.0.1", 0), Handler)  # port 0 = kernel picks a free one
     server.timeout = 1
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    timed_out = not done.wait(timeout=CALLBACK_TIMEOUT_SECONDS)
-    server.shutdown()
-    return not timed_out
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, done
 
 
 def create_api_token_with_session(
@@ -108,9 +93,9 @@ def login_interactive(
         return existing
 
     host = config.host
-    callback_port = _free_port()
-    callback_url = f"http://127.0.0.1:{callback_port}/done"
-    login_url = _login_page_url(config, callback_url)
+    server, signed_in = _start_callback_server()
+    callback_url = f"http://127.0.0.1:{server.server_port}/done"
+    login_url = f"{config.login_url}?next={quote(callback_url, safe='')}"
 
     console.print("\n[bold]Sign in to Warpgate[/bold]")
     console.print("1. Your browser will open the Warpgate login page")
@@ -120,7 +105,7 @@ def login_interactive(
     webbrowser.open(login_url)
 
     try:
-        if _wait_for_callback(callback_port):
+        if signed_in.wait(timeout=CALLBACK_TIMEOUT_SECONDS):
             console.print("[green]Sign-in complete[/green]")
         else:
             console.print(
@@ -130,6 +115,8 @@ def login_interactive(
             console.input()
     except KeyboardInterrupt:
         raise SystemExit("Sign-in cancelled") from None
+    finally:
+        server.shutdown()
 
     secret: str | None = None
     if use_browser_cookies:

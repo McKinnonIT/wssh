@@ -1,4 +1,4 @@
-from wssh.email import normalize_email, short_username
+from wssh.email import normalize_email
 
 EXAMPLE_DOMAIN = "example.com"
 
@@ -14,7 +14,3 @@ def test_normalize_keeps_full_email() -> None:
 
 def test_normalize_without_domain() -> None:
     assert normalize_email("alice@corp.test", "") == "alice@corp.test"
-
-
-def test_short_username() -> None:
-    assert short_username(f"alice@{EXAMPLE_DOMAIN}", EXAMPLE_DOMAIN) == "alice"

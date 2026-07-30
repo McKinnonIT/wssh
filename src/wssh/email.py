@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import subprocess
 
 
@@ -41,19 +40,3 @@ def normalize_email(raw: str, domain: str) -> str:
             return value
         return f"{value}@{domain}"
     return value
-
-
-def is_org_email(email: str, domain: str) -> bool:
-    if not domain:
-        return True
-    return email.endswith(f"@{domain}")
-
-
-def short_username(email: str, domain: str) -> str:
-    if domain and email.endswith(f"@{domain}"):
-        return email[: -len(domain) - 1]
-    return email.split("@", 1)[0]
-
-
-def looks_like_local_part(value: str) -> bool:
-    return bool(re.match(r"^[a-zA-Z0-9._+-]+$", value))

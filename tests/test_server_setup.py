@@ -1,6 +1,6 @@
 from wssh.config import WsshConfig
 from wssh.server_setup import (
-    _build_authorized_keys_remote_cmd,
+    _authorized_keys_remote_cmd,
     _print_manual_keys_instructions,
     default_server_host,
     install_authorized_keys,
@@ -9,7 +9,7 @@ from wssh.server_setup import (
 
 
 def test_build_authorized_keys_remote_cmd() -> None:
-    cmd = _build_authorized_keys_remote_cmd(["ssh-ed25519 AAA test"])
+    cmd = _authorized_keys_remote_cmd(["ssh-ed25519 AAA test"])
     assert "sudo chown" in cmd
     assert "mkdir -p ~/.ssh" in cmd
     assert "ssh-ed25519 AAA test" in cmd
@@ -95,16 +95,11 @@ def test_install_authorized_keys_failure_returns_false(monkeypatch) -> None:
     )
 
 
-def test_manual_keys_instructions_use_clipboard_when_available(monkeypatch) -> None:
-    copied: list[list[str]] = []
-    printed: list[str] = []
+def test_manual_keys_instructions_use_clipboard_when_available(monkeypatch, capsys) -> None:
+    copied: list[str] = []
     monkeypatch.setattr(
-        "wssh.server_setup._copy_lines_to_clipboard",
-        lambda lines: copied.append(lines) or True,
-    )
-    monkeypatch.setattr(
-        "wssh.server_setup._print_copyable_key_line",
-        lambda key: printed.append(key),
+        "wssh.server_setup.copy_to_clipboard",
+        lambda text: copied.append(text) or True,
     )
     monkeypatch.setattr(
         "wssh.server_setup.console.print",
@@ -116,20 +111,15 @@ def test_manual_keys_instructions_use_clipboard_when_available(monkeypatch) -> N
         host="pangolin.internal.example.com",
         target_name="pangolin",
     )
-    assert copied == [["ssh-ed25519 AAA warpgate", "ssh-rsa BBB warpgate"]]
-    assert printed == []
+    assert copied == ["ssh-ed25519 AAA warpgate\nssh-rsa BBB warpgate"]
+    assert capsys.readouterr().out == ""
 
 
-def test_install_authorized_keys_failure_shows_instructions_when_asked(monkeypatch) -> None:
+def test_install_authorized_keys_failure_shows_instructions_when_asked(monkeypatch, capsys) -> None:
     monkeypatch.setattr("wssh.server_setup.probe_direct_ssh", lambda *args: "ok")
     monkeypatch.setattr("wssh.server_setup.run_direct_ssh", lambda *a, **k: 1)
     monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: True)
-    monkeypatch.setattr("wssh.server_setup._copy_lines_to_clipboard", lambda lines: False)
-    stdout_keys: list[str] = []
-    monkeypatch.setattr(
-        "wssh.server_setup._print_copyable_key_line",
-        lambda key: stdout_keys.append(key),
-    )
+    monkeypatch.setattr("wssh.server_setup.copy_to_clipboard", lambda text: False)
     printed: list[str] = []
     monkeypatch.setattr(
         "wssh.server_setup.console.print",
@@ -147,7 +137,8 @@ def test_install_authorized_keys_failure_shows_instructions_when_asked(monkeypat
     )
     blob = "\n".join(printed)
     assert "Manual steps" in blob
-    assert stdout_keys == ["ssh-ed25519 AAA test"]
+    # The key itself goes to plain stdout so Rich cannot wrap it mid-line.
+    assert capsys.readouterr().out.splitlines() == ["ssh-ed25519 AAA test"]
 
 
 def test_install_authorized_keys_runs_remote_cmd(monkeypatch) -> None:

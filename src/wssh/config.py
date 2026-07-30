@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -61,41 +61,16 @@ class WsshConfig:
         return self.effective_api_token()
 
     def to_dict(self) -> dict[str, Any]:
-        data: dict[str, Any] = {
-            "user": self.user,
-            "host": self.host,
-            "port": self.port,
-            "domain": self.domain,
-            "server_domain": self.server_domain,
-            "targets_cache_ttl_hours": self.targets_cache_ttl_hours,
-            "default_ssh_user": self.default_ssh_user,
-            "default_ssh_port": self.default_ssh_port,
-        }
-        if self.api_token:
-            data["api_token"] = self.api_token
-        if self.admin_api_token:
-            data["admin_api_token"] = self.admin_api_token
-        if self.warpgate_client_keys:
-            data["warpgate_client_keys"] = self.warpgate_client_keys
+        data = asdict(self)
+        for optional in ("api_token", "admin_api_token", "warpgate_client_keys"):
+            if not data[optional]:
+                del data[optional]
         return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WsshConfig:
-        return cls(
-            user=str(data.get("user", "")),
-            host=str(data.get("host", "")),
-            port=int(data.get("port", DEFAULT_WARPGATE_PORT)),
-            domain=str(data.get("domain", "")),
-            server_domain=str(data.get("server_domain", "")),
-            api_token=str(data.get("api_token", "")),
-            admin_api_token=str(data.get("admin_api_token", "")),
-            warpgate_client_keys=list(data.get("warpgate_client_keys") or []),
-            targets_cache_ttl_hours=int(
-                data.get("targets_cache_ttl_hours", DEFAULT_TARGETS_CACHE_TTL_HOURS)
-            ),
-            default_ssh_user=str(data.get("default_ssh_user", "root")),
-            default_ssh_port=int(data.get("default_ssh_port", 22)),
-        )
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 def apply_env_overrides(config: WsshConfig) -> WsshConfig:

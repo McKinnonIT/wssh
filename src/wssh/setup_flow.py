@@ -14,8 +14,8 @@ from rich.prompt import Confirm, Prompt
 from wssh.auth import login_interactive
 from wssh.config import WsshConfig, load_config, save_config
 from wssh.constants import DEFAULT_WARPGATE_PORT
-from wssh.email import git_default_email, is_org_email, normalize_email
-from wssh.shell_rc import detect_rc_file, detect_shell_name, install_completion, remove_marked_blocks
+from wssh.email import git_default_email, normalize_email
+from wssh.shell_rc import detect_rc_file, detect_shell_name, install_completion
 from wssh.ssh_key import (
     copy_to_clipboard,
     find_public_key,
@@ -23,7 +23,7 @@ from wssh.ssh_key import (
     normalize_openssh_public_key,
     public_key_stored_correctly,
 )
-from wssh.targets import refresh_targets
+from wssh.targets import get_target_names
 from wssh.warpgate import WarpgateApiError, WarpgateClient
 
 console = Console()
@@ -108,7 +108,7 @@ def prompt_email(config: WsshConfig) -> str:
         if "@" not in email and not config.domain:
             console.print("[red]Enter a full email address, or set an email domain first[/red]")
             continue
-        if config.domain and not is_org_email(email, config.domain):
+        if config.domain and not email.endswith(f"@{config.domain}"):
             if not Confirm.ask(
                 f"Expected @{config.domain} — continue with '{email}'?",
                 default=False,
@@ -220,7 +220,7 @@ def run_setup(
     if not dry_run:
         save_config(config)
         try:
-            refresh_targets(config)
+            get_target_names(config, force_refresh=True)
         except WarpgateApiError:
             pass
 
@@ -228,8 +228,6 @@ def run_setup(
     shell = detect_shell_name()
     console.print("\n[bold blue]Shell completion[/bold blue]")
     console.print(f"Installing completion in {rc_file}")
-    if not dry_run:
-        remove_marked_blocks(rc_file)
     install_completion(rc_file, shell, dry_run=dry_run)
 
     if dry_run:

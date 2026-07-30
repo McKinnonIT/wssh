@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
-from typing import Any, Literal
+from typing import Literal
 
 from wssh.config import WsshConfig
 from wssh.ssh_key import find_public_key, private_key_path
@@ -14,47 +14,25 @@ DirectSshProbe = Literal["ok", "timeout", "unreachable", "auth", "host_key"]
 
 DIRECT_SSH_CONNECT_TIMEOUT = 15
 
-
-class ConnectError(Exception):
-    def __init__(self, message: str, *, kind: str = "unknown") -> None:
-        super().__init__(message)
-        self.kind = kind
-
-
-_UNKNOWN_TARGET_PATTERNS = [
-    re.compile(r"unknown target", re.I),
-    re.compile(r"no such target", re.I),
-    re.compile(r"target not found", re.I),
-    re.compile(r"does not exist", re.I),
-]
-
-_AUTH_FAILURE_PATTERNS = [
-    re.compile(r"permission denied", re.I),
-    re.compile(r"publickey", re.I),
-    re.compile(r"authentication failed", re.I),
-]
-
-# Warpgate-specific hints in SSH stderr
-_WARPGATE_TARGET_AUTH_PATTERNS = [
-    re.compile(r"warpgate.*target", re.I),
-    re.compile(r"could not connect to target", re.I),
-    re.compile(r"failed to authenticate.*target", re.I),
-    re.compile(r"rejected Warpgate authentication", re.I),
-]
+_UNKNOWN_TARGET = ("unknown target", "no such target", "target not found", "does not exist")
+_AUTH_FAILURE = (
+    "permission denied",
+    "publickey",
+    "authentication failed",
+    "could not connect to target",  # Warpgate-specific hints below
+    "rejected warpgate authentication",
+)
+# The only two that need more than a substring: "<word> ... target" ordering.
+_AUTH_FAILURE_RE = re.compile(r"warpgate.*target|failed to authenticate.*target", re.I)
 
 
 def classify_ssh_failure(stderr: str) -> str:
-    text = stderr or ""
-    for pat in _UNKNOWN_TARGET_PATTERNS:
-        if pat.search(text):
-            return "unknown_target"
-    for pat in _WARPGATE_TARGET_AUTH_PATTERNS:
-        if pat.search(text):
-            return "auth_failure"
-    for pat in _AUTH_FAILURE_PATTERNS:
-        if pat.search(text):
-            return "auth_failure"
-    if "connection refused" in text.lower():
+    text = (stderr or "").lower()
+    if any(s in text for s in _UNKNOWN_TARGET):
+        return "unknown_target"
+    if any(s in text for s in _AUTH_FAILURE) or _AUTH_FAILURE_RE.search(text):
+        return "auth_failure"
+    if "connection refused" in text:
         return "connection_refused"
     return "unknown"
 
@@ -167,24 +145,9 @@ def run_direct_ssh(
     return subprocess.call(cmd, stdin=sys.stdin)
 
 
-def run_direct_ssh_capture(
-    user: str,
-    host: str,
-    port: int,
-    remote_command: str,
-) -> tuple[int, str, str]:
-    cmd = [*_direct_ssh_base(port), f"{user}@{host}", remote_command]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return result.returncode, result.stdout, result.stderr
-
-
-def ssh_failure_output(stderr: str, stdout: str = "") -> str:
-    """Combine SSH streams for error classification (OpenSSH may write to either)."""
-    return f"{stderr}\n{stdout}".strip()
-
-
 def format_ssh_hint(stderr: str, *, target: str | None = None, stdout: str = "") -> str:
-    kind = classify_ssh_failure(ssh_failure_output(stderr, stdout))
+    # OpenSSH may write the useful part to either stream.
+    kind = classify_ssh_failure(f"{stderr}\n{stdout}")
     if kind == "auth_failure" and target:
         return (
             f"Authentication failed for [bold]{target}[/bold]. Common causes:\n"
