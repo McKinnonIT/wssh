@@ -100,6 +100,10 @@ def probe_direct_ssh(user: str, host: str, port: int) -> DirectSshProbe:
     return "unreachable"
 
 
+def _bastion_ssh_cmd(config: WsshConfig, target: str, ssh_args: list[str]) -> list[str]:
+    return [*_ssh_base_cmd(config), bastion_destination(config, target), *ssh_args]
+
+
 def run_ssh(config: WsshConfig, target: str, ssh_args: list[str]) -> int:
     if not config.host:
         print("Warpgate host not configured — run: wssh setup", file=sys.stderr)
@@ -107,21 +111,13 @@ def run_ssh(config: WsshConfig, target: str, ssh_args: list[str]) -> int:
     if not config.user:
         print("Warpgate user not configured — run: wssh setup", file=sys.stderr)
         return 1
-    cmd = [
-        *_ssh_base_cmd(config),
-        bastion_destination(config, target),
-        *ssh_args,
-    ]
-    return subprocess.call(cmd)
+    return subprocess.call(_bastion_ssh_cmd(config, target, ssh_args))
 
 
 def run_ssh_capture(config: WsshConfig, target: str, ssh_args: list[str]) -> tuple[int, str, str]:
-    cmd = [
-        *_ssh_base_cmd(config),
-        bastion_destination(config, target),
-        *ssh_args,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        _bastion_ssh_cmd(config, target, ssh_args), capture_output=True, text=True
+    )
     return result.returncode, result.stdout, result.stderr
 
 

@@ -11,7 +11,7 @@ from rich.console import Console
 
 from wssh import __version__
 from wssh.auth import login_interactive, logout
-from wssh.completion import bash_completion, zsh_completion
+from wssh.completion import bash_completion, command_tree, zsh_completion
 from wssh.config import default_config_path, load_config
 from wssh.connect import classify_ssh_failure, format_ssh_hint, run_ssh, run_ssh_capture
 from wssh.server_setup import (
@@ -28,17 +28,6 @@ from wssh.ssh_key import (
 )
 from wssh.targets import get_target_names
 from wssh.warpgate import WarpgateApiError, WarpgateClient
-
-COMMANDS = frozenset({
-    "setup",
-    "auth",
-    "targets",
-    "credentials",
-    "completion",
-    "setup-server",
-    "version",
-    "config-path",
-})
 
 app = typer.Typer(
     name="wssh",
@@ -228,11 +217,13 @@ def setup_server_cmd(
 
 @app.command("version")
 def version_cmd() -> None:
+    """Show the installed wssh version."""
     typer.echo(__version__)
 
 
 @app.command("config-path")
 def config_path_cmd() -> None:
+    """Print the path to the active config file."""
     typer.echo(str(_state_config_path or default_config_path()))
 
 
@@ -274,7 +265,7 @@ def main() -> None:
         if not argv:
             app()
             return
-        if argv[0] in COMMANDS or argv[0].startswith("-"):
+        if argv[0] in command_tree() or argv[0].startswith("-"):
             sys.argv = ["wssh", *argv]
             app()
             return

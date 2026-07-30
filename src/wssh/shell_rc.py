@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import os
-import shutil
-from datetime import datetime
 from pathlib import Path
 
-from wssh.constants import COMPLETION_BEGIN, COMPLETION_END
+COMPLETION_BEGIN = "# >>> wssh completion >>>"
+COMPLETION_END = "# <<< wssh completion <<<"
+
+
+def detect_shell_name() -> str:
+    return os.path.basename(os.environ.get("SHELL", "bash"))
 
 
 def detect_rc_file() -> Path:
-    shell_name = os.path.basename(os.environ.get("SHELL", "/bin/bash"))
     home = Path.home()
+    shell_name = detect_shell_name()
     if shell_name == "zsh":
         return home / ".zshrc"
     if shell_name == "bash":
@@ -20,10 +23,6 @@ def detect_rc_file() -> Path:
             return home / ".bash_profile"
         return home / ".bashrc"
     return home / ".profile"
-
-
-def detect_shell_name() -> str:
-    return os.path.basename(os.environ.get("SHELL", "bash"))
 
 
 def remove_completion_block(path: Path) -> bool:
@@ -69,12 +68,8 @@ def completion_block(shell: str) -> str:
 
 
 def install_completion(path: Path, shell: str, dry_run: bool = False) -> None:
-    block = completion_block(shell)
     if dry_run:
         return
-    remove_completion_block(path)
-    if path.is_file():
-        backup = path.with_suffix(path.suffix + f".bak.{datetime.now():%Y%m%d%H%M%S}")
-        shutil.copy2(path, backup)
+    remove_completion_block(path)  # idempotent: never stack duplicate blocks
     with path.open("a", encoding="utf-8") as fh:
-        fh.write(block)
+        fh.write(completion_block(shell))

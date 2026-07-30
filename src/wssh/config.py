@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from wssh.constants import DEFAULT_TARGETS_CACHE_TTL_HOURS, DEFAULT_WARPGATE_PORT
+DEFAULT_WARPGATE_PORT = 2222
 
 
 @dataclass
@@ -22,7 +22,6 @@ class WsshConfig:
     api_token: str = ""
     admin_api_token: str = ""
     warpgate_client_keys: list[str] = field(default_factory=list)
-    targets_cache_ttl_hours: int = DEFAULT_TARGETS_CACHE_TTL_HOURS
     default_ssh_user: str = "root"
     default_ssh_port: int = 22
 
@@ -46,9 +45,6 @@ class WsshConfig:
     def login_url(self) -> str:
         return f"https://{self.host}/@warpgate/#/login"
 
-    def is_configured(self) -> bool:
-        return bool(self.host.strip() and self.user.strip())
-
     def effective_api_token(self) -> str:
         return os.environ.get("WSSH_API_TOKEN", "").strip() or self.api_token.strip()
 
@@ -59,13 +55,6 @@ class WsshConfig:
         if self.admin_api_token.strip():
             return self.admin_api_token.strip()
         return self.effective_api_token()
-
-    def to_dict(self) -> dict[str, Any]:
-        data = asdict(self)
-        for optional in ("api_token", "admin_api_token", "warpgate_client_keys"):
-            if not data[optional]:
-                del data[optional]
-        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WsshConfig:
@@ -112,6 +101,6 @@ def save_config(config: WsshConfig, path: Path | None = None) -> Path:
     config_path = path or default_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with config_path.open("w", encoding="utf-8") as fh:
-        yaml.safe_dump(config.to_dict(), fh, default_flow_style=False, sort_keys=False)
+        yaml.safe_dump(asdict(config), fh, default_flow_style=False, sort_keys=False)
     config_path.chmod(0o600)
     return config_path

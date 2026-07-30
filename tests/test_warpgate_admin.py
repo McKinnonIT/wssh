@@ -1,5 +1,5 @@
-from wssh.warpgate_admin import WarpgateAdminClient, ssh_key_to_openssh, ssh_target_summary
 from wssh.config import WsshConfig
+from wssh.warpgate_admin import WarpgateAdminClient, ssh_key_to_openssh, ssh_target_summary
 
 
 def test_ssh_key_to_openssh() -> None:

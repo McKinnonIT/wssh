@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-import threading
 import webbrowser
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import quote
 
 from rich.console import Console
 
 from wssh.config import WsshConfig, save_config
-from wssh.constants import API_TOKEN_LABEL
 from wssh.warpgate import WarpgateApiError, WarpgateClient
 
 console = Console()
 
-CALLBACK_TIMEOUT_SECONDS = 300
+API_TOKEN_LABEL = "wssh-cli"
 
 
 def _try_browser_session_cookie(host: str) -> str | None:
@@ -33,34 +29,6 @@ def _try_browser_session_cookie(host: str) -> str | None:
             if cookie.name == "warpgate-http-session" and cookie.value:
                 return cookie.value
     return None
-
-
-def _start_callback_server(path: str = "/done") -> tuple[HTTPServer, threading.Event]:
-    """Serve the local sign-in callback on a free port. Event fires when the browser hits it."""
-    done = threading.Event()
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802
-            if self.path.split("?", 1)[0] == path:
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h2>Warpgate sign-in complete</h2>"
-                    b"<p>You can close this tab and return to the terminal.</p></body></html>"
-                )
-                done.set()
-            else:
-                self.send_response(404)
-                self.end_headers()
-
-        def log_message(self, format: str, *args: object) -> None:
-            return
-
-    server = HTTPServer(("127.0.0.1", 0), Handler)  # port 0 = kernel picks a free one
-    server.timeout = 1
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server, done
 
 
 def create_api_token_with_session(
@@ -92,35 +60,21 @@ def login_interactive(
         console.print("[green]Using existing API token[/green]")
         return existing
 
-    host = config.host
-    server, signed_in = _start_callback_server()
-    callback_url = f"http://127.0.0.1:{server.server_port}/done"
-    login_url = f"{config.login_url}?next={quote(callback_url, safe='')}"
-
     console.print("\n[bold]Sign in to Warpgate[/bold]")
     console.print("1. Your browser will open the Warpgate login page")
     console.print("2. Complete sign-in (SSO or local account, per your Warpgate setup)")
-    console.print("3. When finished, you should return here automatically\n")
-    console.print(f"If the browser did not open: {login_url}\n")
-    webbrowser.open(login_url)
+    console.print("3. Return here when finished\n")
+    console.print(f"If the browser did not open: {config.login_url}\n")
+    webbrowser.open(config.login_url)
 
     try:
-        if signed_in.wait(timeout=CALLBACK_TIMEOUT_SECONDS):
-            console.print("[green]Sign-in complete[/green]")
-        else:
-            console.print(
-                "[yellow]Timed out waiting for redirect — if you finished sign-in, "
-                "press Enter to continue[/yellow]"
-            )
-            console.input()
+        console.input("[bold]Press Enter once sign-in is complete[/bold]: ")
     except KeyboardInterrupt:
         raise SystemExit("Sign-in cancelled") from None
-    finally:
-        server.shutdown()
 
     secret: str | None = None
     if use_browser_cookies:
-        session_cookie = _try_browser_session_cookie(host)
+        session_cookie = _try_browser_session_cookie(config.host)
         if session_cookie:
             try:
                 secret = create_api_token_with_session(config, session_cookie)

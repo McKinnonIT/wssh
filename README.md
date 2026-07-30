@@ -84,7 +84,7 @@ See [`config.example.yaml`](config.example.yaml) for a full template.
 
 Teams can ship **non-secret** defaults (bastion host, email domain, server DNS suffix, default SSH user) without forking `wssh`:
 
-1. Maintain a partial config (see [`config.preset.example.yaml`](config.preset.example.yaml)) — no `api_token` or per-user `user`.
+1. Maintain a partial config (see the preset note in [`config.example.yaml`](config.example.yaml)) — no `api_token` or per-user `user`.
 2. Install `wssh` and copy the preset to `~/.wssh/config.yaml`.
 3. Run `wssh setup` — connection prompts are skipped when `host` is already set; staff only complete username, SSH key, API token, and shell completion.
 

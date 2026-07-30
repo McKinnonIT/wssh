@@ -15,12 +15,6 @@ class SshPublicKey:
     openssh_line: str
 
 
-def public_key_blob(openssh_line: str) -> str | None:
-    """Base64 key material from an OpenSSH public-key line (comment ignored)."""
-    parts = openssh_line.strip().split()
-    return parts[1] if len(parts) >= 2 else None
-
-
 def normalize_openssh_public_key(openssh_line: str) -> str:
     """Return ``<algorithm> <base64>`` only, matching Warpgate's web UI and SSH auth.
 
@@ -48,20 +42,17 @@ def public_key_fingerprint(openssh_line: str) -> str:
     Same value as ``ssh-keygen -lf``: unpadded base64 of the SHA256 digest of the
     raw (base64-decoded) key blob.
     """
-    blob = public_key_blob(openssh_line)
-    if not blob:
-        raise ValueError("invalid OpenSSH public key: expected '<type> <base64> [comment]'")
+    blob = normalize_openssh_public_key(openssh_line).split()[1]
     digest = hashlib.sha256(base64.b64decode(blob)).digest()
     return "SHA256:" + base64.b64encode(digest).decode().rstrip("=")
 
 
 def public_keys_match(line_a: str, line_b: str) -> bool:
     """True if two OpenSSH public-key lines are the same key (ignoring comment)."""
-    blob_a = public_key_blob(line_a)
-    blob_b = public_key_blob(line_b)
-    if blob_a and blob_b:
-        return blob_a == blob_b
-    return line_a.strip() == line_b.strip()
+    try:
+        return normalize_openssh_public_key(line_a) == normalize_openssh_public_key(line_b)
+    except ValueError:
+        return line_a.strip() == line_b.strip()
 
 
 def private_key_path(public_key: SshPublicKey) -> Path | None:

@@ -6,6 +6,9 @@ from wssh.config import load_config
 from wssh.targets import get_target_names
 from wssh.warpgate import WarpgateApiError
 
+# Subcommands Typer cannot report: `completion`'s argument is a plain string.
+_ARGUMENT_CHOICES = {"completion": ["bash", "zsh"]}
+
 
 def _target_names() -> list[str]:
     try:
@@ -14,32 +17,58 @@ def _target_names() -> list[str]:
         return []
 
 
+def _command_help(command: object) -> str:
+    doc = (getattr(command, "callback", None).__doc__ or "") if command else ""
+    return getattr(command, "help", None) or doc.strip().split("\n")[0]
+
+
+def command_tree() -> dict[str, tuple[str, list[str]]]:
+    """Map command name -> (help, subcommands), read off the Typer app itself.
+
+    Derived rather than duplicated: a hand-kept list drifts the moment a
+    command is added.
+    """
+    from wssh.cli import app  # local import: cli imports this module
+
+    tree: dict[str, tuple[str, list[str]]] = {}
+    for cmd in app.registered_commands:
+        name = cmd.name or (cmd.callback.__name__.replace("_", "-") if cmd.callback else "")
+        if name:
+            tree[name] = (_command_help(cmd), _ARGUMENT_CHOICES.get(name, []))
+    for group in app.registered_groups:
+        sub = group.typer_instance
+        if not group.name or sub is None:
+            continue
+        subcommands = sorted(
+            c.name or (c.callback.__name__.replace("_", "-") if c.callback else "")
+            for c in sub.registered_commands
+        )
+        tree[group.name] = (sub.info.help or "", [s for s in subcommands if s])
+    return tree
+
+
 def bash_completion() -> str:
-    names = _target_names()
-    names_str = " ".join(names)
+    tree = command_tree()
+    commands = " ".join(sorted(tree))
+    cases = "\n".join(
+        f"""        {name})
+            COMPREPLY=($(compgen -W "{' '.join(subs)}" -- "$cur"))
+            ;;"""
+        for name, (_, subs) in sorted(tree.items())
+        if subs
+    )
     return f"""# wssh bash completion
 _wssh() {{
     local cur prev words cword
     _init_completion || return
-    local commands="setup setup-server auth targets completion credentials"
+    local commands="{commands}"
     if [[ $cword -eq 1 ]]; then
-        local targets="{names_str}"
+        local targets="{' '.join(_target_names())}"
         COMPREPLY=($(compgen -W "$commands $targets" -- "$cur"))
         return
     fi
     case "${{words[1]}}" in
-        auth)
-            COMPREPLY=($(compgen -W "login logout" -- "$cur"))
-            ;;
-        targets)
-            COMPREPLY=($(compgen -W "list refresh" -- "$cur"))
-            ;;
-        completion)
-            COMPREPLY=($(compgen -W "bash zsh" -- "$cur"))
-            ;;
-        credentials)
-            COMPREPLY=($(compgen -W "add-key" -- "$cur"))
-            ;;
+{cases}
     esac
 }}
 complete -F _wssh wssh
@@ -52,20 +81,24 @@ def _zsh_quote(word: str) -> str:
 
 
 def zsh_completion() -> str:
-    names = _target_names()
-    targets_literal = " ".join(_zsh_quote(n) for n in names)
+    tree = command_tree()
+    targets_literal = " ".join(_zsh_quote(n) for n in _target_names())
+    commands_literal = "\n".join(
+        f"        {_zsh_quote(f'{name}:{help_text}')}" for name, (help_text, _) in sorted(tree.items())
+    )
+    cases = "\n".join(
+        f"""                {name})
+                    _values '{name} argument' {' '.join(subs)}
+                    ;;"""
+        for name, (_, subs) in sorted(tree.items())
+        if subs
+    )
     return f"""#compdef wssh
 
 _wssh() {{
     local -a commands targets
     commands=(
-        'setup:Configure wssh and Warpgate access'
-        'setup-server:Bootstrap a server in Warpgate'
-        'auth:Authentication commands'
-        'targets:List Warpgate targets'
-        'completion:Shell completion scripts'
-        'credentials:Manage credentials'
-        'version:Show version'
+{commands_literal}
     )
     targets=({targets_literal})
     _arguments -C \\
@@ -78,18 +111,7 @@ _wssh() {{
             ;;
         args)
             case $words[1] in
-                auth)
-                    _values 'auth command' login logout
-                    ;;
-                targets)
-                    _values 'targets command' list refresh
-                    ;;
-                completion)
-                    _values 'shell' bash zsh
-                    ;;
-                credentials)
-                    _values 'credentials command' add-key
-                    ;;
+{cases}
             esac
             ;;
     esac

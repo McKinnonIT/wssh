@@ -16,56 +16,31 @@ class WarpgateApiError(Exception):
         self.status_code = status_code
 
 
-class WarpgateClient:
-    def __init__(
-        self,
-        config: WsshConfig,
-        *,
-        token: str | None = None,
-        session_cookie: str | None = None,
-    ) -> None:
-        self.config = config
-        self._token = token
-        self._session_cookie = session_cookie
-        self._client = httpx.Client(
-            base_url=config.user_api_base,
-            timeout=30.0,
-            follow_redirects=True,
-        )
+class ApiClient:
+    """httpx.Client lifecycle and Warpgate error mapping, shared by the user and admin clients."""
+
+    #: Overridden by the admin client, whose 403 has a more specific cause.
+    forbidden_message = ""
+
+    def __init__(self, base_url: str) -> None:
+        self._client = httpx.Client(base_url=base_url, timeout=30.0, follow_redirects=True)
 
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> WarpgateClient:
+    def __enter__(self):
         return self
 
     def __exit__(self, *args: object) -> None:
         self.close()
 
-    def _headers(self, *, use_token: bool = True) -> dict[str, str]:
-        headers: dict[str, str] = {"Accept": "application/json"}
-        if use_token:
-            token = self._token or self.config.effective_api_token()
-            if token:
-                headers["X-Warpgate-Token"] = token
-        if self._session_cookie:
-            headers["Cookie"] = f"warpgate-http-session={self._session_cookie}"
-        return headers
+    def _headers(self) -> dict[str, str]:
+        raise NotImplementedError
 
-    def _request(
-        self,
-        method: str,
-        path: str,
-        *,
-        use_token: bool = True,
-        **kwargs: Any,
-    ) -> httpx.Response:
-        response = self._client.request(
-            method,
-            path,
-            headers=self._headers(use_token=use_token),
-            **kwargs,
-        )
+    def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        response = self._client.request(method, path, headers=self._headers(), **kwargs)
+        if response.status_code == 403 and self.forbidden_message:
+            raise WarpgateApiError(self.forbidden_message, status_code=403)
         if response.status_code >= 400:
             detail = response.text.strip() or response.reason_phrase
             raise WarpgateApiError(
@@ -73,6 +48,31 @@ class WarpgateClient:
                 status_code=response.status_code,
             )
         return response
+
+
+class WarpgateClient(ApiClient):
+    def __init__(
+        self,
+        config: WsshConfig,
+        *,
+        token: str | None = None,
+        session_cookie: str | None = None,
+    ) -> None:
+        super().__init__(config.user_api_base)
+        self.config = config
+        self._token = token
+        self._session_cookie = session_cookie
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if self._session_cookie:
+            # Cookie auth: sending a token too would authenticate as the wrong identity.
+            headers["Cookie"] = f"warpgate-http-session={self._session_cookie}"
+            return headers
+        token = self._token or self.config.effective_api_token()
+        if token:
+            headers["X-Warpgate-Token"] = token
+        return headers
 
     def get_credentials(self) -> dict[str, Any]:
         return self._request("GET", "/profile/credentials").json()
@@ -89,7 +89,6 @@ class WarpgateClient:
         return self._request(
             "POST",
             "/profile/api-tokens",
-            use_token=False,
             json={"label": label, "expiry": expiry_iso},
         ).json()
 

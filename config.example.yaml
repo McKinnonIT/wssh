@@ -23,6 +23,9 @@ api_token: ""
 # Optional: cache Warpgate client keys locally after first admin fetch
 # warpgate_client_keys: []
 
-targets_cache_ttl_hours: 24
 default_ssh_user: root
 default_ssh_port: 22
+
+# Organization preset: ship the non-secret keys above (host, port, domain,
+# server_domain, default_ssh_*) as a shared file. Never include user, api_token,
+# or admin_api_token — `wssh setup` fills those in per person.

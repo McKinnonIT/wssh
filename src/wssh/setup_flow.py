@@ -13,8 +13,6 @@ from rich.prompt import Confirm, Prompt
 
 from wssh.auth import login_interactive
 from wssh.config import WsshConfig, load_config, save_config
-from wssh.constants import DEFAULT_WARPGATE_PORT
-from wssh.email import git_default_email, normalize_email
 from wssh.shell_rc import detect_rc_file, detect_shell_name, install_completion
 from wssh.ssh_key import (
     copy_to_clipboard,
@@ -27,6 +25,14 @@ from wssh.targets import get_target_names
 from wssh.warpgate import WarpgateApiError, WarpgateClient
 
 console = Console()
+
+
+def normalize_email(raw: str, domain: str) -> str:
+    """Append @domain when the user omits it (e.g. alice -> alice@domain)."""
+    value = raw.strip()
+    if not value or "@" in value or not domain:
+        return value
+    return f"{value}@{domain}"
 
 
 def prompt_connection_settings(config: WsshConfig) -> None:
@@ -50,7 +56,7 @@ def prompt_connection_settings(config: WsshConfig) -> None:
             break
         console.print("[red]Host is required[/red]")
 
-    port_default = config.port or DEFAULT_WARPGATE_PORT
+    port_default = config.port
     if env_port := os.environ.get("WSSH_PORT", "").strip():
         port_default = int(env_port)
     port_raw = Prompt.ask(
@@ -85,9 +91,7 @@ def prompt_connection_settings(config: WsshConfig) -> None:
 
 def prompt_email(config: WsshConfig) -> str:
     console.print("\n[bold blue]Your Warpgate username[/bold blue]")
-    default = git_default_email(config.domain) or config.user
-    if default and config.domain and "@" not in default:
-        default = normalize_email(default, config.domain)
+    default = normalize_email(config.user, config.domain)
 
     while True:
         if config.domain:
