@@ -7,6 +7,7 @@ import platform
 import shutil
 import socket
 import sys
+import webbrowser
 
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
@@ -122,6 +123,50 @@ def prompt_email(config: WsshConfig) -> str:
         return email
 
 
+def prompt_manual_key_upload(
+    config: WsshConfig,
+    openssh_line: str,
+    *,
+    dry_run: bool = False,
+) -> None:
+    """Walk the user through adding a public key in the Warpgate web UI.
+
+    This is a distinct action from signing in — people reach the credentials
+    page, log in, and assume the key was registered for them. Every step names
+    the control it refers to so there is nothing left to infer.
+    """
+    key = normalize_openssh_public_key(openssh_line)
+    copied = copy_to_clipboard(key)
+
+    console.print("\n[bold blue]Add your public key to Warpgate[/bold blue]")
+    console.print(
+        "[yellow]This is a separate step from signing in — "
+        "Warpgate does not add the key for you.[/yellow]\n"
+    )
+    console.print(f"  1. Open [bold]{config.credentials_url}[/bold]")
+    console.print("     [dim]Sign in if prompted — the page stays empty until you do.[/dim]")
+    console.print("  2. Find [bold]Public keys[/bold] and click [bold]Add key[/bold]")
+    console.print('  3. Label: anything you like — [bold]wssh[/bold] is fine')
+    if copied:
+        console.print("  4. Paste the key (already on your clipboard) into the box")
+    else:
+        console.print("  4. Copy the key below in full — it is one line — and paste it in the box")
+    console.print("  5. Click [bold]Add[/bold] to save\n")
+
+    # Plain stdout: Rich would wrap a key that must stay on one line.
+    print(key)
+
+    if dry_run:
+        return
+    webbrowser.open(config.credentials_url)
+    console.print()
+    Prompt.ask(
+        "[bold]Press Enter once you have saved the key in Warpgate[/bold]",
+        default="",
+        show_default=False,
+    )
+
+
 def setup_ssh_key(
     config: WsshConfig,
     *,
@@ -149,14 +194,7 @@ def setup_ssh_key(
         return None
 
     if manual_credentials or not config.effective_api_token():
-        openssh_line = normalize_openssh_public_key(key.openssh_line)
-        if copy_to_clipboard(openssh_line):
-            console.print("[green]Copied public key to clipboard[/green]")
-        console.print(f"\n{openssh_line}\n")
-        console.print("Paste into Warpgate credentials:")
-        console.print(f"  {config.credentials_url}\n")
-        if not dry_run:
-            Prompt.ask("Press Enter when the key is saved", default="")
+        prompt_manual_key_upload(config, key.openssh_line, dry_run=dry_run)
         return key.openssh_line
 
     if dry_run:

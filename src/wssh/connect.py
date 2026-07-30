@@ -41,9 +41,21 @@ def bastion_destination(config: WsshConfig, target: str) -> str:
     return f"{config.user}:{target}@{config.host}"
 
 
-def _ssh_base_cmd(config: WsshConfig) -> list[str]:
-    """Build ssh argv with identity file matching the key uploaded to Warpgate."""
-    cmd = ["ssh", "-p", str(config.port)]
+def _ssh_base_cmd(config: WsshConfig, *, batch_mode: bool = False) -> list[str]:
+    """Build ssh argv with identity file matching the key uploaded to Warpgate.
+
+    Public key only. wssh registers your key with Warpgate, so a password prompt
+    here is never the way in — Warpgate offers keyboard-interactive and ssh would
+    otherwise stop and ask for a password no one can supply. Failing straight to
+    ``Permission denied (publickey)`` is both faster and diagnosable.
+
+    ``batch_mode`` additionally forbids every interactive prompt. Required
+    whenever output is captured: a prompt written to a pipe is invisible, so the
+    terminal just hangs on input the user cannot see.
+    """
+    cmd = ["ssh", "-p", str(config.port), "-o", "PreferredAuthentications=publickey"]
+    if batch_mode:
+        cmd.extend(["-o", "BatchMode=yes"])
     pub = find_public_key()
     if pub:
         priv = private_key_path(pub)
@@ -85,7 +97,7 @@ def _direct_ssh_base(port: int, *, batch_mode: bool = False) -> list[str]:
 def probe_direct_ssh(user: str, host: str, port: int) -> DirectSshProbe:
     """Reachability check without prompting for a password."""
     cmd = [*_direct_ssh_base(port, batch_mode=True), f"{user}@{host}", "true"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     text = f"{result.stderr}\n{result.stdout}".lower()
     if "timed out" in text or "timeout" in text:
         return "timeout"
@@ -100,8 +112,14 @@ def probe_direct_ssh(user: str, host: str, port: int) -> DirectSshProbe:
     return "unreachable"
 
 
-def _bastion_ssh_cmd(config: WsshConfig, target: str, ssh_args: list[str]) -> list[str]:
-    return [*_ssh_base_cmd(config), bastion_destination(config, target), *ssh_args]
+def _bastion_ssh_cmd(
+    config: WsshConfig, target: str, ssh_args: list[str], *, batch_mode: bool = False
+) -> list[str]:
+    return [
+        *_ssh_base_cmd(config, batch_mode=batch_mode),
+        bastion_destination(config, target),
+        *ssh_args,
+    ]
 
 
 def run_ssh(config: WsshConfig, target: str, ssh_args: list[str]) -> int:
@@ -115,8 +133,12 @@ def run_ssh(config: WsshConfig, target: str, ssh_args: list[str]) -> int:
 
 
 def run_ssh_capture(config: WsshConfig, target: str, ssh_args: list[str]) -> tuple[int, str, str]:
+    """Run ssh and capture its output. Never prompts — see _ssh_base_cmd."""
     result = subprocess.run(
-        _bastion_ssh_cmd(config, target, ssh_args), capture_output=True, text=True
+        _bastion_ssh_cmd(config, target, ssh_args, batch_mode=True),
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     return result.returncode, result.stdout, result.stderr
 
