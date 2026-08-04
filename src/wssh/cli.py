@@ -276,8 +276,13 @@ def connect(target: str, ssh_args: list[str]) -> int:
                 return 1
             elif _offer_setup(config, target, "unknown_target"):
                 return run_ssh(config, target, ssh_args)
-    except WarpgateApiError:
-        pass
+    except WarpgateApiError as exc:
+        # Not fatal — ssh below may still work. But swallowing it silently made a
+        # dead token look like an unknown target: no suggestions, no visibility
+        # check, and an offer to re-register a server that was registered all along.
+        console.print(f"[yellow]Could not check targets: {exc}[/yellow]")
+        if exc.status_code == 401:
+            console.print("[dim]Your API token is not valid — run: wssh auth login[/dim]")
 
     code = run_ssh(config, target, ssh_args)
     if code == 0:
