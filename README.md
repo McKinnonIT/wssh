@@ -114,7 +114,7 @@ The check compares the commit `pip` recorded for your install against `git ls-re
 | Output | stderr only, and only when stderr is a terminal — piping stays clean |
 | Failure | Offline, no `git`, or no repo access means no notice, never an error or a delay |
 | Not a git install | Silent, since there is no commit to compare |
-| Opt out | Set `WSSH_NO_UPDATE_CHECK=1` |
+| Opt out | `WSSH_NO_UPDATE_CHECK=1` silences the notice and the `wssh version` check. `wssh update --check` ignores it — checking is that command's whole purpose |
 
 ## Configuration
 
@@ -144,7 +144,7 @@ Environment variables override file values:
 | `WSSH_ADMIN_API_TOKEN` | Admin API token (for `setup-server`; falls back to `WSSH_API_TOKEN`) |
 | `WSSH_WARPGATE_CLIENT_KEYS` | Newline-separated client public keys (offline bootstrap) |
 | `WSSH_REPO` | Git repo `wssh update` and `install.sh` pull from |
-| `WSSH_NO_UPDATE_CHECK` | Set to any value to disable the update check |
+| `WSSH_NO_UPDATE_CHECK` | Silence the update notice and the `wssh version` check |
 
 See [`config.example.yaml`](config.example.yaml) for a commented template.
 

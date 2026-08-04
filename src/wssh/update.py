@@ -167,13 +167,22 @@ def _cache_is_fresh(cached: dict) -> bool:
         return False
 
 
+def check_disabled() -> bool:
+    """WSSH_NO_UPDATE_CHECK — for air-gapped machines and CI.
+
+    Suppresses the checks nobody asked for. ``wssh update --check`` ignores it:
+    checking is the entire point of that command.
+    """
+    return bool(os.environ.get("WSSH_NO_UPDATE_CHECK", "").strip())
+
+
 def check_for_update(*, force: bool = False) -> str | None:
     """Remote commit when it differs from the installed one, else None.
 
     Result is cached for a day, so the network is touched once regardless of how
     often wssh runs.
     """
-    if os.environ.get("WSSH_NO_UPDATE_CHECK", "").strip():
+    if check_disabled():
         return None
     local = installed_commit()
     if not local:

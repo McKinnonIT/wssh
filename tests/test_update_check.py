@@ -217,3 +217,11 @@ def test_version_line_is_bare_without_a_commit(monkeypatch) -> None:
     """A dir or PyPI-style install has no commit to name."""
     set_record(monkeypatch, DIR_RECORD)
     assert update.version_line() == "0.1.0"
+
+
+def test_opt_out_also_covers_the_version_command(monkeypatch) -> None:
+    """`wssh version` must not stall on the network for an air-gapped machine."""
+    monkeypatch.delenv("WSSH_NO_UPDATE_CHECK", raising=False)
+    assert update.check_disabled() is False
+    monkeypatch.setenv("WSSH_NO_UPDATE_CHECK", "1")
+    assert update.check_disabled() is True

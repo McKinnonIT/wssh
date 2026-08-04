@@ -27,6 +27,7 @@ from wssh.ssh_key import (
 )
 from wssh.targets import get_target_names, suggest_targets
 from wssh.update import (
+    check_disabled,
     installed_commit,
     maybe_notify_update,
     report_update_status,
@@ -241,7 +242,7 @@ def version_cmd() -> None:
     # Live check rather than the cached banner — someone running `version` is
     # asking right now. Skipped when piped, so scripts parsing the version do
     # not pay for a network call, and when there is no commit to compare.
-    if sys.stdout.isatty() and installed_commit():
+    if sys.stdout.isatty() and installed_commit() and not check_disabled():
         report_update_status()
 
 
