@@ -59,14 +59,14 @@ def installed_commit() -> str | None:
 
 
 def version_line() -> str:
-    """``0.1.0 (e0a0d9d)`` — the commit is what actually identifies a build.
+    """What ``wssh version`` prints: the commit, which is the only real build id.
 
-    Version first, so ``wssh version | cut -d' ' -f1`` still works.
+    ``__version__`` is deliberately absent. It exists because a wheel needs a
+    version, not because it means anything — it has been 0.1.0 since the first
+    commit, so printing it only invited people to trust it.
     """
-    from wssh import __version__
-
     commit = installed_commit()
-    return f"{__version__} ({commit[:7]})" if commit else __version__
+    return commit[:7] if commit else "unknown"
 
 
 def repo_url() -> str:
@@ -227,8 +227,12 @@ def maybe_notify_update() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def report_update_status() -> int:
-    """`wssh update --check`: say where this copy stands, and how to move it."""
+def report_update_status(*, brief: bool = False) -> int:
+    """Say where this copy stands, and how to move it.
+
+    ``brief`` drops the current commit from the up-to-date line, for callers
+    like ``wssh version`` that have just printed it.
+    """
     local = installed_commit()
     if not local:
         console.print(
@@ -249,7 +253,8 @@ def report_update_status() -> int:
 
     _save_cache(remote)
     if remote == local:
-        console.print(f"[green]Up to date[/green] [dim]({local[:7]})[/dim]")
+        suffix = "" if brief else f" [dim]({local[:7]})[/dim]"
+        console.print(f"[green]Up to date[/green]{suffix}")
         return 0
     console.print(
         f"[yellow]Update available[/yellow] [dim]({local[:7]} → {remote[:7]})[/dim]\n"

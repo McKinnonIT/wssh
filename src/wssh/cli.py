@@ -237,13 +237,13 @@ def update_cmd(
 
 @app.command("version")
 def version_cmd() -> None:
-    """Show the installed version, and whether a newer one is available."""
+    """Show the installed commit, and whether a newer one is available."""
     typer.echo(version_line())
     # Live check rather than the cached banner — someone running `version` is
-    # asking right now. Skipped when piped, so scripts parsing the version do
+    # asking right now. Skipped when piped, so scripts parsing the commit do
     # not pay for a network call, and when there is no commit to compare.
     if sys.stdout.isatty() and installed_commit() and not check_disabled():
-        report_update_status()
+        report_update_status(brief=True)
 
 
 @app.command("config-path")

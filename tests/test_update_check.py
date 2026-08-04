@@ -206,17 +206,16 @@ def test_notice_never_raises(monkeypatch) -> None:
 # --- version line ---------------------------------------------------------- #
 
 
-def test_version_line_includes_the_commit(monkeypatch) -> None:
+def test_version_line_is_the_commit_alone(monkeypatch) -> None:
+    """0.1.0 never moves, so printing it would only invite misplaced trust."""
     set_record(monkeypatch, VCS_RECORD)
-    line = update.version_line()
-    assert line.startswith("0.1.0 "), "version must stay first so `cut -d' ' -f1` works"
-    assert LOCAL[:7] in line
+    assert update.version_line() == LOCAL[:7]
 
 
-def test_version_line_is_bare_without_a_commit(monkeypatch) -> None:
+def test_version_line_says_unknown_without_a_commit(monkeypatch) -> None:
     """A dir or PyPI-style install has no commit to name."""
     set_record(monkeypatch, DIR_RECORD)
-    assert update.version_line() == "0.1.0"
+    assert update.version_line() == "unknown"
 
 
 def test_opt_out_also_covers_the_version_command(monkeypatch) -> None:
