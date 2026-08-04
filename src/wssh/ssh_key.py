@@ -86,17 +86,37 @@ def generate_ed25519_key(comment: str, dry_run: bool = False) -> SshPublicKey | 
     return SshPublicKey(path=public, openssh_line=public.read_text(encoding="utf-8").strip())
 
 
+_CLIPBOARD_COMMANDS = [
+    ["pbcopy"],
+    ["wl-copy"],
+    ["xclip", "-selection", "clipboard"],
+    ["xsel", "--clipboard", "--input"],
+]
+
+CLIPBOARD_TIMEOUT = 5
+
+
 def copy_to_clipboard(text: str) -> bool:
-    commands = [
-        ["pbcopy"],
-        ["wl-copy"],
-        ["xclip", "-selection", "clipboard"],
-        ["xsel", "--clipboard", "--input"],
-    ]
-    for cmd in commands:
+    """Best-effort clipboard copy. Never blocks the caller.
+
+    Output goes to /dev/null rather than pipes on purpose. Every X11/Wayland
+    helper here forks a process that keeps running to own the selection, and
+    that fork inherits our stdout/stderr. Captured, those pipes stay open for
+    as long as the clipboard holds the value, so waiting for EOF never
+    returns — ``wssh setup`` hung here on Linux while macOS's non-forking
+    pbcopy was fine. The timeout covers a helper that does not fork at all.
+    """
+    for cmd in _CLIPBOARD_COMMANDS:
         try:
-            subprocess.run(cmd, input=text.encode(), check=True, capture_output=True)
+            subprocess.run(
+                cmd,
+                input=text.encode(),
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=CLIPBOARD_TIMEOUT,
+            )
             return True
-        except (OSError, subprocess.CalledProcessError):
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
             continue
     return False
