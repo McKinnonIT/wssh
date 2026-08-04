@@ -201,3 +201,19 @@ def test_notice_never_raises(monkeypatch) -> None:
     monkeypatch.setattr(sys.stderr, "isatty", lambda: True, raising=False)
     monkeypatch.setattr(update, "check_for_update", lambda **k: 1 / 0)
     update.maybe_notify_update()
+
+
+# --- version line ---------------------------------------------------------- #
+
+
+def test_version_line_includes_the_commit(monkeypatch) -> None:
+    set_record(monkeypatch, VCS_RECORD)
+    line = update.version_line()
+    assert line.startswith("0.1.0 "), "version must stay first so `cut -d' ' -f1` works"
+    assert LOCAL[:7] in line
+
+
+def test_version_line_is_bare_without_a_commit(monkeypatch) -> None:
+    """A dir or PyPI-style install has no commit to name."""
+    set_record(monkeypatch, DIR_RECORD)
+    assert update.version_line() == "0.1.0"

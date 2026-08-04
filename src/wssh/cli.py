@@ -9,7 +9,6 @@ import typer
 from rich.console import Console
 from rich.prompt import Confirm
 
-from wssh import __version__
 from wssh.auth import login_interactive, logout
 from wssh.completion import bash_completion, command_tree, zsh_completion
 from wssh.config import default_config_path, load_config
@@ -27,7 +26,13 @@ from wssh.ssh_key import (
     public_key_stored_correctly,
 )
 from wssh.targets import get_target_names, suggest_targets
-from wssh.update import maybe_notify_update, report_update_status, run_update
+from wssh.update import (
+    installed_commit,
+    maybe_notify_update,
+    report_update_status,
+    run_update,
+    version_line,
+)
 from wssh.warpgate import WarpgateApiError, WarpgateClient
 
 app = typer.Typer(
@@ -45,6 +50,9 @@ app.add_typer(credentials_app, name="credentials")
 
 console = Console()
 _state_config_path: Path | None = None
+
+# Commands that print their own update status.
+_SELF_REPORTING = frozenset({"update", "version"})
 
 
 def _parse_global_flags(argv: list[str]) -> list[str]:
@@ -228,8 +236,13 @@ def update_cmd(
 
 @app.command("version")
 def version_cmd() -> None:
-    """Show the installed wssh version."""
-    typer.echo(__version__)
+    """Show the installed version, and whether a newer one is available."""
+    typer.echo(version_line())
+    # Live check rather than the cached banner — someone running `version` is
+    # asking right now. Skipped when piped, so scripts parsing the version do
+    # not pay for a network call, and when there is no commit to compare.
+    if sys.stdout.isatty() and installed_commit():
+        report_update_status()
 
 
 @app.command("config-path")
@@ -319,9 +332,9 @@ def _dispatch(argv: list[str]) -> None:
 def main() -> None:
     argv = _parse_global_flags(sys.argv[1:])
     # After the command, not before: a notice printed ahead of an ssh session is
-    # gone by the time the session ends. `update` is exempt — it reports its own
-    # result, and this process still sees the pre-update commit.
-    notify = argv[:1] != ["update"]
+    # gone by the time the session ends. The commands in _SELF_REPORTING report
+    # their own update state, so the banner would only duplicate it.
+    notify = not argv or argv[0] not in _SELF_REPORTING
     try:
         _dispatch(argv)
     except typer.Exit as exc:

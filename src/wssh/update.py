@@ -58,6 +58,17 @@ def installed_commit() -> str | None:
     return (_direct_url().get("vcs_info") or {}).get("commit_id")
 
 
+def version_line() -> str:
+    """``0.1.0 (e0a0d9d)`` — the commit is what actually identifies a build.
+
+    Version first, so ``wssh version | cut -d' ' -f1`` still works.
+    """
+    from wssh import __version__
+
+    commit = installed_commit()
+    return f"{__version__} ({commit[:7]})" if commit else __version__
+
+
 def repo_url() -> str:
     """Repo to update from: WSSH_REPO, else where this copy came from, else default.
 

@@ -67,7 +67,7 @@ If a connection fails, `wssh` checks whether the target exists in Warpgate, whet
 | `wssh completion bash\|zsh` | Print the completion script |
 | `wssh update` | Install the latest version from GitHub |
 | `wssh update --check` | Report whether an update is available, without installing |
-| `wssh version` | Show the installed version |
+| `wssh version` | Show the installed version and commit, and check for an update |
 | `wssh config-path` | Print the active config file path |
 
 Useful options:
@@ -95,6 +95,16 @@ Update available (2db85ba → 5c019d5) — run wssh update
 ```
 
 Then `wssh update` installs it, via `pipx` when it is on PATH and `pip` into the current interpreter otherwise.
+
+To ask directly:
+
+```console
+$ wssh version
+0.1.0 (e0a0d9d)
+Up to date (e0a0d9d)
+```
+
+The commit is what identifies a build — `0.1.0` has not changed since the first commit. `wssh version` checks live rather than reading the cache, since you are asking right now; piped (`wssh version | …`) it prints the bare version line and makes no network call, so scripts stay fast and `cut -d' ' -f1` still gets the version.
 
 The check compares the commit `pip` recorded for your install against `git ls-remote` on the repo. There are no tags or releases, and `__version__` does not move between commits, so a version comparison would report "up to date" forever. Because two commits cannot be ordered without a local clone, a copy installed from a branch that is *ahead* of `main` also reports an update — both short commits are always shown so you can tell.
 
