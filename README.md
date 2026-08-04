@@ -42,7 +42,15 @@ wssh dns01 -L 8080:localhost:80         # arguments pass through to ssh
 
 Target names tab-complete once setup has run. Anything that is not a known subcommand is treated as a target name.
 
-If a connection fails, `wssh` checks whether the target exists in Warpgate, whether your account can reach it, and offers to fix role access or run `setup-server`.
+Misspelled names get a suggestion instead of a failed connection:
+
+```
+$ wssh pangoli
+No target pangoli in Warpgate.
+Did you mean pangolin01? [y/n] (y):
+```
+
+If a connection fails, `wssh` checks whether the target exists in Warpgate, whether your account can reach it, and offers to fix role access or run `setup-server`. When stdin is not a terminal, these prompts are skipped so scripted use never blocks.
 
 ## Commands
 
@@ -57,6 +65,7 @@ If a connection fails, `wssh` checks whether the target exists in Warpgate, whet
 | `wssh targets refresh` | Refresh the local target cache |
 | `wssh credentials add-key` | Upload your SSH public key to Warpgate |
 | `wssh completion bash\|zsh` | Print the completion script |
+| `wssh update` | Reinstall the latest version from GitHub |
 | `wssh version` | Show the installed version |
 | `wssh config-path` | Print the active config file path |
 
@@ -103,6 +112,7 @@ Environment variables override file values:
 | `WSSH_API_TOKEN` | User API token |
 | `WSSH_ADMIN_API_TOKEN` | Admin API token (for `setup-server`; falls back to `WSSH_API_TOKEN`) |
 | `WSSH_WARPGATE_CLIENT_KEYS` | Newline-separated client public keys (offline bootstrap) |
+| `WSSH_REPO` | Git repo `wssh update` and `install.sh` pull from |
 
 See [`config.example.yaml`](config.example.yaml) for a commented template.
 

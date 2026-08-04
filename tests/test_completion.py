@@ -18,6 +18,7 @@ def test_command_tree_matches_registered_cli_commands() -> None:
         "targets",
         "credentials",
         "completion",
+        "update",
         "version",
         "config-path",
     }

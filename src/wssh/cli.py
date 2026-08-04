@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.prompt import Confirm
 
 from wssh import __version__
 from wssh.auth import login_interactive, logout
@@ -25,7 +26,8 @@ from wssh.ssh_key import (
     public_key_fingerprint,
     public_key_stored_correctly,
 )
-from wssh.targets import get_target_names
+from wssh.targets import get_target_names, suggest_targets
+from wssh.update import run_update
 from wssh.warpgate import WarpgateApiError, WarpgateClient
 
 app = typer.Typer(
@@ -214,6 +216,12 @@ def setup_server_cmd(
         raise typer.Exit(1) from exc
 
 
+@app.command("update")
+def update_cmd() -> None:
+    """Update wssh to the latest version from GitHub."""
+    raise typer.Exit(run_update())
+
+
 @app.command("version")
 def version_cmd() -> None:
     """Show the installed wssh version."""
@@ -226,6 +234,29 @@ def config_path_cmd() -> None:
     typer.echo(str(_state_config_path or default_config_path()))
 
 
+def _offer_setup(config, target: str, kind: str) -> bool:
+    """maybe_offer_setup, skipped when stdin is not a tty — it asks Confirm questions,
+    and a prompt written into a pipe just hangs on input nobody can supply."""
+    return sys.stdin.isatty() and maybe_offer_setup(config, target, kind)
+
+
+def _resolve_typo(target: str, known: list[str]) -> str | None:
+    """Offer the closest known target for a name that is not one. None = no match taken."""
+    matches = suggest_targets(target, known)
+    if not matches:
+        return None
+    console.print(f"\n[yellow]No target [bold]{target}[/bold] in Warpgate.[/yellow]")
+    if len(matches) > 1:
+        console.print(f"  [dim]Close matches: {', '.join(matches)}[/dim]")
+    if not sys.stdin.isatty():
+        # Piped or scripted: suggest, never block on a prompt nobody can see.
+        console.print(f"  [dim]Did you mean [bold]{matches[0]}[/bold]?[/dim]")
+        return None
+    if Confirm.ask(f"Did you mean [bold]{matches[0]}[/bold]?", default=True):
+        return matches[0]
+    return None
+
+
 def connect(target: str, ssh_args: list[str]) -> int:
     """Connect via Warpgate; return ssh exit code."""
     config = _config()
@@ -236,11 +267,14 @@ def connect(target: str, ssh_args: list[str]) -> int:
     try:
         known = get_target_names(config, cache_only=False)
         if known and target not in known:
-            if explain_target_not_visible(config, target):
+            suggested = _resolve_typo(target, known)
+            if suggested:
+                target = suggested
+            elif explain_target_not_visible(config, target):
                 if try_fix_target_role_access(config, target):
                     return run_ssh(config, target, ssh_args)
                 return 1
-            if maybe_offer_setup(config, target, "unknown_target"):
+            elif _offer_setup(config, target, "unknown_target"):
                 return run_ssh(config, target, ssh_args)
     except WarpgateApiError:
         pass
@@ -251,7 +285,7 @@ def connect(target: str, ssh_args: list[str]) -> int:
 
     _, stdout, stderr = run_ssh_capture(config, target, ["true"])
     kind = classify_ssh_failure(f"{stderr}\n{stdout}")
-    if maybe_offer_setup(config, target, kind):
+    if _offer_setup(config, target, kind):
         return run_ssh(config, target, ssh_args)
 
     console.print(format_ssh_hint(stderr, target=target, stdout=stdout))

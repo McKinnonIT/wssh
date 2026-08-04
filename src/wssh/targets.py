@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import time
 from pathlib import Path
@@ -66,3 +67,19 @@ def get_target_names(
     names = fetch_ssh_target_names(config)
     save_cache(names)
     return names
+
+
+def suggest_targets(name: str, known: list[str], limit: int = 3) -> list[str]:
+    """Known targets a typo'd name probably meant, best first. Empty if nothing is close.
+
+    Prefix hits come first and skip difflib entirely: "pangolin" -> "pangolin01"
+    is obvious to a human but scores below any useful similarity cutoff once the
+    typed name is much shorter than the real one.
+    """
+    lowered = name.strip().lower()
+    if not lowered:
+        return []
+    prefix = [n for n in known if n.lower().startswith(lowered)]
+    if prefix:
+        return prefix[:limit]
+    return difflib.get_close_matches(lowered, known, n=limit, cutoff=0.6)
