@@ -65,7 +65,8 @@ If a connection fails, `wssh` checks whether the target exists in Warpgate, whet
 | `wssh targets refresh` | Refresh the local target cache |
 | `wssh credentials add-key` | Upload your SSH public key to Warpgate |
 | `wssh completion bash\|zsh` | Print the completion script |
-| `wssh update` | Reinstall the latest version from GitHub |
+| `wssh update` | Install the latest version from GitHub |
+| `wssh update --check` | Report whether an update is available, without installing |
 | `wssh version` | Show the installed version |
 | `wssh config-path` | Print the active config file path |
 
@@ -84,6 +85,26 @@ Useful options:
 | `--key <path>`, `--label <str>` | `credentials add-key` | Choose which public key to upload, and its label |
 
 Targets are cached under `~/.wssh/cache/` for 24 hours so completion stays fast; `wssh targets refresh` updates it early.
+
+## Staying up to date
+
+`wssh` tells you when the repo has moved on, after the command finishes:
+
+```
+Update available (2db85ba → 5c019d5) — run wssh update
+```
+
+Then `wssh update` installs it, via `pipx` when it is on PATH and `pip` into the current interpreter otherwise.
+
+The check compares the commit `pip` recorded for your install against `git ls-remote` on the repo. There are no tags or releases, and `__version__` does not move between commits, so a version comparison would report "up to date" forever. Because two commits cannot be ordered without a local clone, a copy installed from a branch that is *ahead* of `main` also reports an update — both short commits are always shown so you can tell.
+
+| Behaviour | |
+|---|---|
+| Frequency | Network is touched once per 24 hours; the result is cached in `~/.wssh/cache/update.json` |
+| Output | stderr only, and only when stderr is a terminal — piping stays clean |
+| Failure | Offline, no `git`, or no repo access means no notice, never an error or a delay |
+| Not a git install | Silent, since there is no commit to compare |
+| Opt out | Set `WSSH_NO_UPDATE_CHECK=1` |
 
 ## Configuration
 
@@ -113,6 +134,7 @@ Environment variables override file values:
 | `WSSH_ADMIN_API_TOKEN` | Admin API token (for `setup-server`; falls back to `WSSH_API_TOKEN`) |
 | `WSSH_WARPGATE_CLIENT_KEYS` | Newline-separated client public keys (offline bootstrap) |
 | `WSSH_REPO` | Git repo `wssh update` and `install.sh` pull from |
+| `WSSH_NO_UPDATE_CHECK` | Set to any value to disable the update check |
 
 See [`config.example.yaml`](config.example.yaml) for a commented template.
 

@@ -27,7 +27,7 @@ from wssh.ssh_key import (
     public_key_stored_correctly,
 )
 from wssh.targets import get_target_names, suggest_targets
-from wssh.update import run_update
+from wssh.update import maybe_notify_update, report_update_status, run_update
 from wssh.warpgate import WarpgateApiError, WarpgateClient
 
 app = typer.Typer(
@@ -217,9 +217,13 @@ def setup_server_cmd(
 
 
 @app.command("update")
-def update_cmd() -> None:
+def update_cmd(
+    check: bool = typer.Option(
+        False, "--check", help="Only report whether an update is available"
+    ),
+) -> None:
     """Update wssh to the latest version from GitHub."""
-    raise typer.Exit(run_update())
+    raise typer.Exit(report_update_status() if check else run_update())
 
 
 @app.command("version")
@@ -297,23 +301,34 @@ def connect(target: str, ssh_args: list[str]) -> int:
     return code
 
 
+def _dispatch(argv: list[str]) -> None:
+    if not argv:
+        app()
+        return
+    if argv[0] in command_tree() or argv[0].startswith("-"):
+        sys.argv = ["wssh", *argv]
+        app()
+        return
+    target = argv[0]
+    ssh_args = argv[1:]
+    if ssh_args and ssh_args[0] == "--":
+        ssh_args = ssh_args[1:]
+    sys.exit(connect(target, ssh_args))
+
+
 def main() -> None:
     argv = _parse_global_flags(sys.argv[1:])
+    # After the command, not before: a notice printed ahead of an ssh session is
+    # gone by the time the session ends. `update` is exempt — it reports its own
+    # result, and this process still sees the pre-update commit.
+    notify = argv[:1] != ["update"]
     try:
-        if not argv:
-            app()
-            return
-        if argv[0] in command_tree() or argv[0].startswith("-"):
-            sys.argv = ["wssh", *argv]
-            app()
-            return
-        target = argv[0]
-        ssh_args = argv[1:]
-        if ssh_args and ssh_args[0] == "--":
-            ssh_args = ssh_args[1:]
-        sys.exit(connect(target, ssh_args))
+        _dispatch(argv)
     except typer.Exit as exc:
         sys.exit(exc.exit_code)
+    finally:
+        if notify:
+            maybe_notify_update()
 
 
 if __name__ == "__main__":
