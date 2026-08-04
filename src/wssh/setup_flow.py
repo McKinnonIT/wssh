@@ -253,9 +253,12 @@ def run_setup(
     config.user = prompt_email(config)
 
     if not skip_auth and not dry_run and not manual_credentials:
-        if not config.effective_api_token():
-            console.print("\n[bold blue]Warpgate sign-in[/bold blue]")
-            login_interactive(config)
+        console.print("\n[bold blue]Warpgate sign-in[/bold blue]")
+        # Unconditionally: login_interactive already returns early for a token
+        # that still works. Skipping it whenever *any* token was stored meant an
+        # expired one was never re-checked, so setup could not repair the one
+        # thing people re-run setup to repair.
+        login_interactive(config)
 
     setup_ssh_key(config, dry_run=dry_run, manual_credentials=manual_credentials)
 
