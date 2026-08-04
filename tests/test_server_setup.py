@@ -67,6 +67,7 @@ def test_prompt_server_connection_custom_values(monkeypatch) -> None:
 def test_install_authorized_keys_timeout_returns_false(monkeypatch) -> None:
     monkeypatch.setattr("wssh.server_setup.probe_direct_ssh", lambda *args: "timeout")
     monkeypatch.setattr("wssh.server_setup.copy_to_clipboard", lambda text: True)
+    monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: False)
     assert (
         install_authorized_keys(
             "deploy", "pangolin.internal.example.com", 22, ["ssh-ed25519 AAA test"]
@@ -91,6 +92,7 @@ def test_unreachable_host_names_the_network_as_the_cause(monkeypatch) -> None:
     """No credential fixes an unreachable host — don't let the user hunt for one."""
     monkeypatch.setattr("wssh.server_setup.probe_direct_ssh", lambda *a: "timeout")
     monkeypatch.setattr("wssh.server_setup.copy_to_clipboard", lambda text: True)
+    monkeypatch.setattr("wssh.server_setup.Confirm.ask", lambda *a, **k: False)
     printed: list[str] = []
     monkeypatch.setattr(
         "wssh.server_setup.console.print", lambda msg="", **k: printed.append(str(msg))
@@ -105,6 +107,26 @@ def test_unreachable_host_names_the_network_as_the_cause(monkeypatch) -> None:
     assert "network or VPN" in blob
     assert "port 22 never answered" in blob
     assert "wssh setup-server fms03" in blob
+    assert blob.count("port 22 never answered") == 1, "cause should be stated once, not twice"
+
+
+def test_failed_probe_can_be_overruled(monkeypatch) -> None:
+    """The probe runs without a password; the user may know it is wrong."""
+    monkeypatch.setattr("wssh.server_setup.probe_direct_ssh", lambda *a: "timeout")
+    monkeypatch.setattr("wssh.server_setup.copy_to_clipboard", lambda text: True)
+    monkeypatch.setattr("wssh.server_setup.console.print", lambda *a, **k: None)
+    asked: list[str] = []
+    monkeypatch.setattr(
+        "wssh.server_setup.Confirm.ask", lambda msg, **k: asked.append(str(msg)) or True
+    )
+    attempts: list[tuple] = []
+    monkeypatch.setattr(
+        "wssh.server_setup.run_direct_ssh",
+        lambda user, host, port, cmd, **k: attempts.append((user, host)) or 0,
+    )
+    assert install_authorized_keys("sysadmin", "fms03.internal", 22, ["ssh-ed25519 AAA x"]) is True
+    assert any("anyway" in q for q in asked), "must offer to try despite the probe"
+    assert attempts == [("sysadmin", "fms03.internal")]
 
 
 def test_reachable_host_still_attempts_a_password_login(monkeypatch) -> None:

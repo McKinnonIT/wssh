@@ -86,6 +86,14 @@ _BLOCKED_REASON = {
 _OFF_NETWORK = ("timeout", "unreachable")
 
 
+def _print_blocked_reason(dest: str, *, reason: str, port: int = 22) -> None:
+    detail = _BLOCKED_REASON.get(reason, reason).format(dest=dest, port=port)
+    console.print("\n[bold red]✗ Could not install Warpgate keys from here[/bold red]")
+    console.print(f"  [dim]{dest} — {detail}[/dim]")
+    if reason in _OFF_NETWORK:
+        console.print("  [yellow]Are you on the school network or VPN?[/yellow]")
+
+
 def _print_keys_install_blocked(
     dest: str,
     ssh_user: str,
@@ -94,13 +102,11 @@ def _print_keys_install_blocked(
     reason: str,
     port: int = 22,
     target_name: str | None = None,
+    reason_already_shown: bool = False,
 ) -> None:
     """Explain why automatic key install failed, and how to do it by hand."""
-    detail = _BLOCKED_REASON.get(reason, reason).format(dest=dest, port=port)
-    console.print("\n[bold red]✗ Could not install Warpgate keys from here[/bold red]")
-    console.print(f"  [dim]{dest} — {detail}[/dim]")
-    if reason in _OFF_NETWORK:
-        console.print("  [yellow]Are you on the school network or VPN?[/yellow]")
+    if not reason_already_shown:
+        _print_blocked_reason(dest, reason=reason, port=port)
     if target_name:
         console.print(f"  [dim]Then run [bold]wssh setup-server {target_name}[/bold] again.[/dim]")
     console.print("  [dim]Warpgate may still reach this host — you can register it anyway.[/dim]")
@@ -147,10 +153,21 @@ def install_authorized_keys(
     )
     probe = probe_direct_ssh(user, host, port)
     if probe in ("timeout", "unreachable", "host_key"):
-        _print_keys_install_blocked(
-            dest, user, stripped_keys, reason=probe, port=port, target_name=target_name
-        )
-        return False
+        # The probe is a prediction, and it runs without a password or key
+        # passphrase. Say what it saw, then let the user overrule it — refusing
+        # outright hides the password login behind a guess.
+        _print_blocked_reason(dest, reason=probe, port=port)
+        if not Confirm.ask(f"\nTry connecting to [bold]{dest}[/bold] anyway?", default=True):
+            _print_keys_install_blocked(
+                dest,
+                user,
+                stripped_keys,
+                reason=probe,
+                port=port,
+                target_name=target_name,
+                reason_already_shown=True,
+            )
+            return False
 
     console.print(
         f"  [dim]One SSH login to {dest} "
@@ -163,11 +180,13 @@ def install_authorized_keys(
         code = run_direct_ssh(user, host, port, remote_cmd, force_tty=True)
 
     if code != 0:
+        # Keep whatever the probe saw ("timeout" stays "timeout" — it never connected);
+        # only a probe that succeeded means the install itself is what broke.
         _print_keys_install_blocked(
             dest,
             user,
             stripped_keys,
-            reason="auth" if probe == "auth" else "install_failed",
+            reason="install_failed" if probe == "ok" else probe,
             port=port,
             target_name=target_name,
         )
