@@ -212,9 +212,20 @@ def test_version_line_is_the_commit_alone(monkeypatch) -> None:
     assert update.version_line() == LOCAL[:7]
 
 
-def test_version_line_says_unknown_without_a_commit(monkeypatch) -> None:
-    """A dir or PyPI-style install has no commit to name."""
+def test_version_line_falls_back_to_the_git_derived_version(monkeypatch) -> None:
+    """A dir install records no commit, but the version itself names one."""
     set_record(monkeypatch, DIR_RECORD)
+    monkeypatch.setattr(update, "version", lambda name: "0.0.1.dev31+g6d9ac2de4")
+    assert update.version_line() == "0.0.1.dev31+g6d9ac2de4"
+
+
+def test_version_line_says_unknown_when_not_installed(monkeypatch) -> None:
+    set_record(monkeypatch, DIR_RECORD)
+
+    def missing(name):
+        raise update.PackageNotFoundError(name)
+
+    monkeypatch.setattr(update, "version", missing)
     assert update.version_line() == "unknown"
 
 

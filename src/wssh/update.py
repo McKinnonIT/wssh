@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
-from importlib.metadata import PackageNotFoundError, distribution
+from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 
 from rich.console import Console
@@ -66,7 +66,14 @@ def version_line() -> str:
     printing both would just say it twice, more verbosely.
     """
     commit = installed_commit()
-    return commit[:7] if commit else "unknown"
+    if commit:
+        return commit[:7]
+    # A local-directory install records no commit, but its git-derived version
+    # still names one (0.0.1.dev31+g6d9ac2de4) — better than nothing.
+    try:
+        return version("wssh")
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def repo_url() -> str:
