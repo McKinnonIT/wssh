@@ -224,3 +224,58 @@ def test_opt_out_also_covers_the_version_command(monkeypatch) -> None:
     assert update.check_disabled() is False
     monkeypatch.setenv("WSSH_NO_UPDATE_CHECK", "1")
     assert update.check_disabled() is True
+
+
+# --- run_update ------------------------------------------------------------ #
+
+
+@pytest.fixture
+def installs(monkeypatch):
+    """Record the install commands run_update would execute, without running them."""
+    ran: list[list[str]] = []
+    monkeypatch.setattr(update.subprocess, "call", lambda cmd: ran.append(cmd) or 0)
+    monkeypatch.setattr(update.console, "print", lambda *a, **k: None)
+    return ran
+
+
+def test_no_reinstall_when_already_on_the_remote_commit(monkeypatch, installs) -> None:
+    """The whole point: a clone and rebuild for nothing is what --force is for."""
+    set_record(monkeypatch, VCS_RECORD)
+    monkeypatch.setattr(update, "remote_commit", lambda *a: LOCAL)
+    assert update.run_update() == 0
+    assert installs == [], "nothing to install, so nothing should have run"
+
+
+def test_force_reinstalls_an_up_to_date_copy(monkeypatch, installs) -> None:
+    set_record(monkeypatch, VCS_RECORD)
+    monkeypatch.setattr(update, "remote_commit", lambda *a: LOCAL)
+    assert update.run_update(force=True) == 0
+    assert len(installs) == 1
+
+
+def test_installs_when_the_remote_has_moved(monkeypatch, installs) -> None:
+    set_record(monkeypatch, VCS_RECORD)
+    monkeypatch.setattr(update, "remote_commit", lambda *a: REMOTE)
+    assert update.run_update() == 0
+    assert len(installs) == 1
+
+
+def test_installs_when_the_remote_is_unreachable(monkeypatch, installs) -> None:
+    """A 5s ls-remote timeout must not veto an update the user asked for."""
+    set_record(monkeypatch, VCS_RECORD)
+    monkeypatch.setattr(update, "remote_commit", lambda *a: None)
+    assert update.run_update() == 0
+    assert len(installs) == 1
+
+
+def test_installs_when_there_is_no_recorded_commit(monkeypatch, installs) -> None:
+    set_record(monkeypatch, DIR_RECORD)
+    assert update.run_update() == 0
+    assert len(installs) == 1  # remote_commit would fail the test if it were called
+
+
+def test_failed_install_returns_its_exit_code(monkeypatch, installs) -> None:
+    set_record(monkeypatch, VCS_RECORD)
+    monkeypatch.setattr(update, "remote_commit", lambda *a: REMOTE)
+    monkeypatch.setattr(update.subprocess, "call", lambda cmd: 1)
+    assert update.run_update() == 1

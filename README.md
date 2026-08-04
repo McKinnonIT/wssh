@@ -65,7 +65,7 @@ If a connection fails, `wssh` checks whether the target exists in Warpgate, whet
 | `wssh targets refresh` | Refresh the local target cache |
 | `wssh credentials add-key` | Upload your SSH public key to Warpgate |
 | `wssh completion bash\|zsh` | Print the completion script |
-| `wssh update` | Install the latest version from GitHub |
+| `wssh update` | Install the latest version from GitHub, if there is one |
 | `wssh update --check` | Report whether an update is available, without installing |
 | `wssh version` | Show the installed commit, and check for an update |
 | `wssh config-path` | Print the active config file path |
@@ -81,6 +81,8 @@ Useful options:
 | `--token <token>` | `auth login` | Store a token you already have |
 | `--no-browser-cookies` | `auth login` | Do not read session cookies from the browser |
 | `--force`, `-f` | `targets list` | Refresh from the API instead of the cache |
+| `--force`, `-f` | `update` | Reinstall even when already up to date |
+| `--check` | `update` | Report update status without installing |
 | `--cache-only` | `targets list` | Never hit the API (used by completion) |
 | `--key <path>`, `--label <str>` | `credentials add-key` | Choose which public key to upload, and its label |
 
@@ -94,7 +96,15 @@ Targets are cached under `~/.wssh/cache/` for 24 hours so completion stays fast;
 Update available (2db85ba → 5c019d5) — run wssh update
 ```
 
-Then `wssh update` installs it, via `pipx` when it is on PATH and `pip` into the current interpreter otherwise.
+Then `wssh update` installs it, via `pipx` when it is on PATH and `pip` into the current interpreter otherwise. It compares first and does nothing when there is nothing to get:
+
+```console
+$ wssh update
+Already up to date (26665e7)
+Nothing to install — use --force to reinstall anyway.
+```
+
+`--force` reinstalls regardless, for a venv that needs rebuilding. If the remote cannot be reached, or the copy was not installed from git, there is nothing to compare and the install runs — you asked for it, and `ls-remote`'s short timeout can fail on a link a clone survives.
 
 To ask directly:
 

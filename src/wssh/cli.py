@@ -230,9 +230,12 @@ def update_cmd(
     check: bool = typer.Option(
         False, "--check", help="Only report whether an update is available"
     ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Reinstall even when already up to date"
+    ),
 ) -> None:
     """Update wssh to the latest version from GitHub."""
-    raise typer.Exit(report_update_status() if check else run_update())
+    raise typer.Exit(report_update_status() if check else run_update(force=force))
 
 
 @app.command("version")

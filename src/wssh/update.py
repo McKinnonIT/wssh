@@ -276,7 +276,27 @@ def update_command() -> list[str]:
     return [sys.executable, "-m", "pip", "install", "--force-reinstall", spec]
 
 
-def run_update() -> int:
+def run_update(*, force: bool = False) -> int:
+    """Install the latest commit, skipping the reinstall when already on it."""
+    local = installed_commit()
+    remote = remote_commit() if local else None
+    if remote:
+        _save_cache(remote)
+
+    if remote and remote == local:
+        if not force:
+            console.print(
+                f"[green]Already up to date[/green] [dim]({local[:7]})[/dim]\n"
+                "[dim]Nothing to install — use --force to reinstall anyway.[/dim]"
+            )
+            return 0
+        console.print(f"[dim]Reinstalling {local[:7]}[/dim]")
+    elif remote:
+        console.print(f"[bold]Updating[/bold] [dim]{local[:7]} → {remote[:7]}[/dim]")
+    # Either side unknown — not a git install, or the remote is unreachable —
+    # means there is nothing to compare. Defer to the user and install: they
+    # asked, and ls-remote's short timeout can fail on a link a clone survives.
+
     cmd = update_command()
     console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
     code = subprocess.call(cmd)
