@@ -1,10 +1,13 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "wssh"
-version = "0.1.0"
+# Derived from git — see [tool.hatch.version]. A hand-kept number stayed 0.1.0
+# across every commit, so pip, pipx, and `pip show` all reported a version that
+# told you nothing about which build you had.
+dynamic = ["version"]
 description = "SSH to Warpgate targets from your terminal — setup, connect, and manage bastion access"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,6 +25,12 @@ dev = ["pytest>=8.0", "pytest-httpx>=0.30", "ruff>=0.16"]
 
 [project.scripts]
 wssh = "wssh.cli:main"
+
+[tool.hatch.version]
+source = "vcs"
+# A copy with no .git (a downloaded tarball) must still build rather than fail
+# at version detection.
+fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wssh"]

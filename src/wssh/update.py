@@ -1,10 +1,11 @@
 """Reinstall wssh from GitHub, and notice when a newer commit is available.
 
-Commits are the only usable signal here: the repo has no tags or releases, and
-``__version__`` has been ``0.1.0`` across every commit, so comparing versions
-would report "up to date" forever. pip records the exact commit a VCS install
-came from (PEP 610 ``direct_url.json``), and ``git ls-remote`` reads the tip of
-the default branch without cloning or authenticating.
+Commits are the signal, not versions. The distribution version is derived from
+git (``0.0.1.dev31+ga0e2b10``), so it does identify a build — but reading it back
+tells you only what you already have, never what the remote has. pip records the
+exact commit a VCS install came from (PEP 610 ``direct_url.json``), and
+``git ls-remote`` reads the tip of the default branch without cloning or
+authenticating.
 """
 
 from __future__ import annotations
@@ -61,9 +62,8 @@ def installed_commit() -> str | None:
 def version_line() -> str:
     """What ``wssh version`` prints: the commit, which is the only real build id.
 
-    ``__version__`` is deliberately absent. It exists because a wheel needs a
-    version, not because it means anything — it has been 0.1.0 since the first
-    commit, so printing it only invited people to trust it.
+    The distribution version is git-derived and carries this same commit, so
+    printing both would just say it twice, more verbosely.
     """
     commit = installed_commit()
     return commit[:7] if commit else "unknown"
