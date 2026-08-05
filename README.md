@@ -159,6 +159,7 @@ Environment variables override file values:
 | `WSSH_WARPGATE_CLIENT_KEYS` | Newline-separated client public keys (offline bootstrap) |
 | `WSSH_REPO` | Git repo `wssh update` and `install.sh` pull from |
 | `WSSH_NO_UPDATE_CHECK` | Silence the update notice and the `wssh version` check |
+| `WSSH_TERM` | TERM sent to hosts that lack your terminal's terminfo (Ghostty, Kitty). Default `xterm-256color`; set empty to send your real TERM |
 
 See [`config.example.yaml`](config.example.yaml) for a commented template.
 

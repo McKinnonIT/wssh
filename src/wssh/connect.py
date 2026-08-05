@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -24,6 +25,29 @@ _AUTH_FAILURE = (
 )
 # The only two that need more than a substring: "<word> ... target" ordering.
 _AUTH_FAILURE_RE = re.compile(r"warpgate.*target|failed to authenticate.*target", re.I)
+
+
+# Terminals whose terminfo entry almost no remote host has, so the session dies on
+# "'xterm-ghostty': unknown terminal type". Ghostty's own fix (shell-integration-features
+# = ssh-terminfo) is a shell function wrapping ssh, so it never sees the ssh we spawn.
+# https://ghostty.org/docs/help/terminfo
+_UNKNOWN_REMOTE_TERMS = ("xterm-ghostty", "xterm-kitty")
+
+
+def ssh_env() -> dict[str, str] | None:
+    """Environment for ssh, with TERM downgraded when the remote won't know it.
+
+    ssh takes TERM for its pty request straight from its own environment, which works
+    on every OpenSSH version (``-o SetEnv=TERM`` needs 8.7+). Set ``WSSH_TERM`` to pick
+    a different value, or to empty to keep your real TERM — do that once you've copied
+    the entry over with ``infocmp -x $TERM | ssh host -- tic -x -``.
+
+    Returns None to inherit the environment unchanged.
+    """
+    fallback = os.environ.get("WSSH_TERM", "xterm-256color").strip()
+    if not fallback or not os.environ.get("TERM", "").startswith(_UNKNOWN_REMOTE_TERMS):
+        return None
+    return {**os.environ, "TERM": fallback}
 
 
 def classify_ssh_failure(stderr: str) -> str:
@@ -129,7 +153,7 @@ def run_ssh(config: WsshConfig, target: str, ssh_args: list[str]) -> int:
     if not config.user:
         print("Warpgate user not configured — run: wssh setup", file=sys.stderr)
         return 1
-    return subprocess.call(_bastion_ssh_cmd(config, target, ssh_args))
+    return subprocess.call(_bastion_ssh_cmd(config, target, ssh_args), env=ssh_env())
 
 
 def run_ssh_capture(config: WsshConfig, target: str, ssh_args: list[str]) -> tuple[int, str, str]:
@@ -139,6 +163,7 @@ def run_ssh_capture(config: WsshConfig, target: str, ssh_args: list[str]) -> tup
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        env=ssh_env(),
     )
     return result.returncode, result.stdout, result.stderr
 
@@ -160,7 +185,7 @@ def run_direct_ssh(
     if dry_run:
         print("Would run:", " ".join(cmd))
         return 0
-    return subprocess.call(cmd, stdin=sys.stdin)
+    return subprocess.call(cmd, stdin=sys.stdin, env=ssh_env())
 
 
 def format_ssh_hint(stderr: str, *, target: str | None = None, stdout: str = "") -> str:

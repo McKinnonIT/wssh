@@ -4,6 +4,7 @@ from wssh.connect import (
     _direct_ssh_base,
     probe_direct_ssh,
     run_ssh_capture,
+    ssh_env,
 )
 
 
@@ -57,3 +58,22 @@ def test_probe_direct_ssh_timeout(monkeypatch) -> None:
         lambda *args, **kwargs: Result(),
     )
     assert probe_direct_ssh("u", "h", 22) == "timeout"
+
+
+def test_ghostty_term_is_downgraded_for_the_remote(monkeypatch) -> None:
+    """Remote hosts have no xterm-ghostty terminfo, and ghostty's own fix is a shell function."""
+    monkeypatch.setenv("TERM", "xterm-ghostty")
+    monkeypatch.delenv("WSSH_TERM", raising=False)
+    assert (ssh_env() or {})["TERM"] == "xterm-256color"
+
+    monkeypatch.setenv("WSSH_TERM", "screen-256color")
+    assert (ssh_env() or {})["TERM"] == "screen-256color"
+
+    # Opt out once the terminfo entry is installed on the far side.
+    monkeypatch.setenv("WSSH_TERM", "")
+    assert ssh_env() is None
+
+    # A TERM every host already knows is left alone — None means "inherit unchanged".
+    monkeypatch.delenv("WSSH_TERM", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    assert ssh_env() is None
