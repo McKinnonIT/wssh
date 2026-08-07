@@ -194,10 +194,3 @@ class WarpgateAdminClient(ApiClient):
         body = self._target_body(name, host, port, username, existing=existing)
         tid = str(target_id)
         return self._request("PUT", f"/targets/{tid}", json=body).json()
-
-    def ensure_target_access(self, name: str, role_name: str = DEFAULT_TARGET_ROLE) -> bool:
-        """Ensure an existing target grants ``role_name``. Returns True if newly assigned."""
-        target = self.find_target_by_name(name)
-        if not target or not target.get("id"):
-            return False
-        return self.ensure_target_role(target["id"], role_name)

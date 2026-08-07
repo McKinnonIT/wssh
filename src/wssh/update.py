@@ -15,15 +15,14 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from importlib.metadata import PackageNotFoundError, distribution, version
-from pathlib import Path
 
 from rich.console import Console
 
-from wssh.config import default_cache_dir
+from wssh.cache import drop_cache, is_fresh, read_cache, write_cache
 
 DEFAULT_REPO = "https://github.com/McKinnonIT/wssh.git"
+CACHE_NAME = "update.json"
 CHECK_INTERVAL_SECONDS = 24 * 3600
 LS_REMOTE_TIMEOUT = 5
 
@@ -135,45 +134,6 @@ def remote_commit(url: str | None = None) -> str | None:
 # --------------------------------------------------------------------------- #
 
 
-def cache_path() -> Path:
-    return default_cache_dir() / "update.json"
-
-
-def _load_cache() -> dict:
-    try:
-        return json.loads(cache_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def _save_cache(remote: str | None) -> None:
-    """Record the attempt, successful or not, so an outage is not retried every run."""
-    path = cache_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps({"checked_at": time.time(), "remote_commit": remote}) + "\n",
-            encoding="utf-8",
-        )
-    except OSError:
-        pass  # a read-only cache dir must not break the command
-
-
-def clear_cache() -> None:
-    """Drop the cached result so the next run re-checks (used after updating)."""
-    try:
-        cache_path().unlink(missing_ok=True)
-    except OSError:
-        pass
-
-
-def _cache_is_fresh(cached: dict) -> bool:
-    try:
-        return time.time() - float(cached["checked_at"]) < CHECK_INTERVAL_SECONDS
-    except (KeyError, TypeError, ValueError):
-        return False
-
-
 def check_disabled() -> bool:
     """WSSH_NO_UPDATE_CHECK — for air-gapped machines and CI.
 
@@ -183,7 +143,7 @@ def check_disabled() -> bool:
     return bool(os.environ.get("WSSH_NO_UPDATE_CHECK", "").strip())
 
 
-def check_for_update(*, force: bool = False) -> str | None:
+def check_for_update() -> str | None:
     """Remote commit when it differs from the installed one, else None.
 
     Result is cached for a day, so the network is touched once regardless of how
@@ -195,12 +155,13 @@ def check_for_update(*, force: bool = False) -> str | None:
     if not local:
         return None
 
-    cached = _load_cache()
-    if not force and _cache_is_fresh(cached):
+    cached = read_cache(CACHE_NAME)
+    if is_fresh(cached, CHECK_INTERVAL_SECONDS):
         remote = cached.get("remote_commit")
     else:
         remote = remote_commit()
-        _save_cache(remote)
+        # Recorded even when None: an outage must not be retried on every run.
+        write_cache(CACHE_NAME, {"remote_commit": remote})
 
     if not remote or remote == local:
         return None
@@ -258,7 +219,7 @@ def report_update_status(*, brief: bool = False) -> int:
         )
         return 0
 
-    _save_cache(remote)
+    write_cache(CACHE_NAME, {"remote_commit": remote})
     if remote == local:
         suffix = "" if brief else f" [dim]({local[:7]})[/dim]"
         console.print(f"[green]Up to date[/green]{suffix}")
@@ -288,7 +249,7 @@ def run_update(*, force: bool = False) -> int:
     local = installed_commit()
     remote = remote_commit() if local else None
     if remote:
-        _save_cache(remote)
+        write_cache(CACHE_NAME, {"remote_commit": remote})
 
     if remote and remote == local:
         if not force:
@@ -312,6 +273,6 @@ def run_update(*, force: bool = False) -> int:
         return code
     # This process still reports the pre-update commit, so a stale cached result
     # would keep nagging about an update that just landed.
-    clear_cache()
+    drop_cache(CACHE_NAME)
     console.print("[green]wssh updated[/green] [dim]— open a new shell to reload completion[/dim]")
     return 0

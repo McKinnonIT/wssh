@@ -112,18 +112,9 @@ def setup_cmd(
 @auth_app.command("login")
 def auth_login(
     token: str | None = typer.Option(None, "--token", help="Paste an existing API token"),
-    no_browser_cookies: bool = typer.Option(
-        False,
-        "--no-browser-cookies",
-        help="Do not try to read session cookies from the browser",
-    ),
 ) -> None:
     """Sign in via the Warpgate web UI and store an API token."""
-    login_interactive(
-        _config(),
-        token=token,
-        use_browser_cookies=not no_browser_cookies,
-    )
+    login_interactive(_config(), token=token)
 
 
 @auth_app.command("logout")

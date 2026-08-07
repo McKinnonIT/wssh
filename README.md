@@ -91,7 +91,6 @@ Useful options:
 | `--manual-credentials` | `setup` | Paste the SSH key in the Warpgate UI instead of uploading via API |
 | `--skip-auth` | `setup` | Skip the sign-in step |
 | `--token <token>` | `auth login` | Store a token you already have |
-| `--no-browser-cookies` | `auth login` | Do not read session cookies from the browser |
 | `--force`, `-f` | `targets list` | Refresh from the API instead of the cache |
 | `--force`, `-f` | `update` | Reinstall even when already up to date |
 | `--check` | `update` | Report update status without installing |

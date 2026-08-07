@@ -47,21 +47,21 @@ def remove_completion_block(path: Path) -> bool:
 
 
 def completion_block(shell: str) -> str:
-    if shell == "zsh":
-        return (
-            f"\n{COMPLETION_BEGIN}\n"
-            f"# Added by wssh — tab-complete Warpgate SSH targets\n"
-            f"# Place this block after 'compinit' in .zshrc if completion fails.\n"
-            f"if command -v wssh >/dev/null 2>&1; then\n"
-            f'  eval "$(wssh completion zsh)"\n'
-            f"fi\n"
-            f"{COMPLETION_END}\n"
-        )
+    # Only two scripts exist; anything else (fish, sh) gets the bash one, as before.
+    shell = "zsh" if shell == "zsh" else "bash"
+    # zsh only: compinit must already have run, and it usually has not by the time
+    # a block appended to the end of .zshrc is read.
+    ordering_note = (
+        "# Place this block after 'compinit' in .zshrc if completion fails.\n"
+        if shell == "zsh"
+        else ""
+    )
     return (
         f"\n{COMPLETION_BEGIN}\n"
         f"# Added by wssh — tab-complete Warpgate SSH targets\n"
+        f"{ordering_note}"
         f"if command -v wssh >/dev/null 2>&1; then\n"
-        f'  eval "$(wssh completion bash)"\n'
+        f'  eval "$(wssh completion {shell})"\n'
         f"fi\n"
         f"{COMPLETION_END}\n"
     )

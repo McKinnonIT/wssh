@@ -5,8 +5,8 @@ from wssh.server_setup import maybe_offer_setup
 def test_maybe_offer_setup_registered_target_offers_retry(monkeypatch) -> None:
     config = WsshConfig(admin_api_token="token")
     monkeypatch.setattr(
-        "wssh.server_setup._target_registered_in_warpgate",
-        lambda cfg, name: True,
+        "wssh.server_setup.find_target",
+        lambda cfg, name: {"id": "t-1", "name": name},
     )
     monkeypatch.setattr(
         "wssh.server_setup.try_fix_target_role_access",

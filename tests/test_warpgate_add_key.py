@@ -28,11 +28,7 @@ def config() -> WsshConfig:
     )
 
 
-def test_cookie_auth_does_not_also_send_a_token(config: WsshConfig) -> None:
-    """Token + cookie together would authenticate as the wrong identity."""
-    headers = WarpgateClient(config, session_cookie="SESSION")._headers()
-    assert headers["Cookie"] == "warpgate-http-session=SESSION"
-    assert "X-Warpgate-Token" not in headers
+def test_the_configured_token_authenticates_requests(config: WsshConfig) -> None:
     assert WarpgateClient(config)._headers()["X-Warpgate-Token"] == "test-token"
 
 

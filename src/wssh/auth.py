@@ -3,51 +3,18 @@
 from __future__ import annotations
 
 import webbrowser
-from datetime import datetime, timedelta, timezone
 
 from rich.console import Console
 
 from wssh.config import WsshConfig, save_config
-from wssh.warpgate import WarpgateApiError, WarpgateClient
+from wssh.warpgate import WarpgateClient
 
 console = Console()
 
 API_TOKEN_LABEL = "wssh-cli"
 
 
-def _try_browser_session_cookie(host: str) -> str | None:
-    try:
-        import browser_cookie3  # type: ignore[import-untyped]
-    except ImportError:
-        return None
-    for loader in (browser_cookie3.chrome, browser_cookie3.firefox, browser_cookie3.safari):
-        try:
-            jar = loader(domain_name=host)
-        except Exception:
-            continue
-        for cookie in jar:
-            if cookie.name == "warpgate-http-session" and cookie.value:
-                return cookie.value
-    return None
-
-
-def create_api_token_with_session(
-    config: WsshConfig, session_cookie: str, label: str = API_TOKEN_LABEL
-) -> str:
-    expiry = (datetime.now(timezone.utc) + timedelta(days=365)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
-    with WarpgateClient(config, session_cookie=session_cookie) as client:
-        result = client.create_api_token(label, expiry)
-    return result["secret"]
-
-
-def login_interactive(
-    config: WsshConfig,
-    *,
-    token: str | None = None,
-    use_browser_cookies: bool = True,
-) -> str:
+def login_interactive(config: WsshConfig, *, token: str | None = None) -> str:
     """Return API token (existing, pasted, or newly created)."""
 
     if token:
@@ -72,35 +39,18 @@ def login_interactive(
     except KeyboardInterrupt:
         raise SystemExit("Sign-in cancelled") from None
 
-    secret: str | None = None
-    if use_browser_cookies:
-        session_cookie = _try_browser_session_cookie(config.host)
-        if session_cookie:
-            try:
-                secret = create_api_token_with_session(config, session_cookie)
-                console.print("[green]Created API token automatically[/green]")
-            except WarpgateApiError as exc:
-                console.print(f"[yellow]Could not create token via session: {exc}[/yellow]")
-        else:
-            console.print(
-                "[dim]Tip: pip install 'wssh[cookies]' for automatic token creation "
-                "after browser sign-in[/dim]"
-            )
-
+    console.print("\n[bold]Create an API token in Warpgate[/bold]")
+    console.print(
+        f"  1. Open [bold]{config.api_tokens_url}[/bold]\n"
+        "     [dim]Sign in if prompted — the page stays empty until you do.[/dim]\n"
+        "  2. Go to [bold]Profile → API Tokens[/bold] and click [bold]Add token[/bold]\n"
+        f"  3. Label: [bold]{API_TOKEN_LABEL}[/bold], then save\n"
+        "  4. Copy the token it shows you — it is only displayed once\n"
+    )
+    webbrowser.open(config.api_tokens_url)
+    secret = console.input("[bold]Paste the API token here[/bold]: ").strip()
     if not secret:
-        console.print("\n[bold]Create an API token in Warpgate[/bold]")
-        console.print(
-            f"  1. Open [bold]{config.api_tokens_url}[/bold]\n"
-            "     [dim]Sign in if prompted — the page stays empty until you do.[/dim]\n"
-            "  2. Go to [bold]Profile → API Tokens[/bold] and click [bold]Add token[/bold]\n"
-            f"  3. Label: [bold]{API_TOKEN_LABEL}[/bold], then save\n"
-            "  4. Copy the token it shows you — it is only displayed once\n"
-        )
-        webbrowser.open(config.api_tokens_url)
-        pasted = console.input("[bold]Paste the API token here[/bold]: ").strip()
-        if not pasted:
-            raise SystemExit("API token is required")
-        secret = pasted
+        raise SystemExit("API token is required")
 
     config.api_token = secret
     save_config(config)

@@ -282,28 +282,42 @@ def _ensure_target_role_access(
         )
 
 
+def find_target(config: WsshConfig, name: str) -> dict[str, Any] | None:
+    """The target as Warpgate admin sees it.
+
+    None covers every "cannot tell" case — no admin token, API unreachable, no such
+    target — because every caller treats them the same: there is nothing to fix here.
+    """
+    if not config.effective_admin_token():
+        return None
+    try:
+        with WarpgateAdminClient(config) as admin:
+            return admin.find_target_by_name(name)
+    except WarpgateApiError:
+        return None
+
+
 def try_fix_target_role_access(config: WsshConfig, target: str) -> bool:
     """If the target exists in Warpgate but the user cannot see it, grant role access.
 
     Returns True when the target should be retried (role was fixed or user should reconnect).
     """
-    if not config.effective_admin_token():
+    found = find_target(config, target)
+    if not found or not found.get("id"):
         return False
     try:
         with WarpgateAdminClient(config) as admin:
-            if not admin.find_target_by_name(target):
-                return False
-            if not admin.ensure_target_access(target):
+            if not admin.ensure_target_role(found["id"]):
                 console.print(
                     f"[dim]{DEFAULT_TARGET_ROLE} role access already enabled on '{target}'[/dim]"
                 )
                 return True
-            console.print(
-                f"[green]Granted [bold]{DEFAULT_TARGET_ROLE}[/bold] "
-                f"role access on '{target}'[/green]"
-            )
-            get_target_names(config, force_refresh=True)
-            return True
+        console.print(
+            f"[green]Granted [bold]{DEFAULT_TARGET_ROLE}[/bold] "
+            f"role access on '{target}'[/green]"
+        )
+        get_target_names(config, force_refresh=True)
+        return True
     except WarpgateApiError as exc:
         console.print(f"[yellow]Could not update role access: {exc}[/yellow]")
         return False
@@ -311,13 +325,7 @@ def try_fix_target_role_access(config: WsshConfig, target: str) -> bool:
 
 def explain_target_not_visible(config: WsshConfig, target: str) -> bool:
     """Print a helpful message when a target exists in admin but not in the user's list."""
-    if not config.effective_admin_token():
-        return False
-    try:
-        with WarpgateAdminClient(config) as admin:
-            if not admin.find_target_by_name(target):
-                return False
-    except WarpgateApiError:
+    if not find_target(config, target):
         return False
 
     console.print(
@@ -429,23 +437,7 @@ def setup_server_interactive(
         )
 
 
-def _target_registered_in_warpgate(config: WsshConfig, name: str) -> bool:
-    """True when the target exists in Warpgate admin (may still need role access)."""
-    if not config.effective_admin_token():
-        return False
-    try:
-        with WarpgateAdminClient(config) as admin:
-            return admin.find_target_by_name(name) is not None
-    except WarpgateApiError:
-        return False
-
-
-def _offer_retry_or_setup(
-    config: WsshConfig,
-    target: str,
-    *,
-    message: str = "",
-) -> bool:
+def _offer_retry_or_setup(config: WsshConfig, target: str, message: str = "") -> bool:
     """Target exists in Warpgate but SSH failed — retry or optional full setup."""
     if message:
         console.print(f"\n[yellow]{message}[/yellow]")
@@ -473,14 +465,12 @@ def maybe_offer_setup(
     if error_kind == "unknown_target" and explain_target_not_visible(config, target):
         return _offer_retry_or_setup(config, target)
 
-    if _target_registered_in_warpgate(config, target):
+    if find_target(config, target):
         return _offer_retry_or_setup(
             config,
             target,
-            message=(
-                f"Target '{target}' is registered in Warpgate but the connection failed. "
-                "Warpgate client keys may be missing on the server, or host/user may be wrong."
-            ),
+            f"Target '{target}' is registered in Warpgate but the connection failed. "
+            "Warpgate client keys may be missing on the server, or host/user may be wrong.",
         )
 
     if error_kind == "unknown_target":

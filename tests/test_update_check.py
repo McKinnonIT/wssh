@@ -25,7 +25,7 @@ DIR_RECORD = json.dumps({"url": "file:///home/sam/wssh", "dir_info": {}})
 @pytest.fixture(autouse=True)
 def isolate(monkeypatch, tmp_path):
     """Never touch the real cache, the network, or the user's environment."""
-    monkeypatch.setattr(update, "cache_path", lambda: tmp_path / "update.json")
+    monkeypatch.setattr("wssh.cache.default_cache_dir", lambda: tmp_path)
     monkeypatch.delenv("WSSH_NO_UPDATE_CHECK", raising=False)
     monkeypatch.delenv("WSSH_REPO", raising=False)
     monkeypatch.setattr(
@@ -134,15 +134,6 @@ def test_second_call_uses_the_cache(monkeypatch) -> None:
     assert len(calls) == 1, "the network must be touched once per interval, not per run"
 
 
-def test_force_bypasses_the_cache(monkeypatch) -> None:
-    set_record(monkeypatch, VCS_RECORD)
-    calls = []
-    monkeypatch.setattr(update, "remote_commit", lambda *a: calls.append(1) or REMOTE)
-    update.check_for_update()
-    update.check_for_update(force=True)
-    assert len(calls) == 2
-
-
 def test_offline_check_is_not_retried_every_run(monkeypatch) -> None:
     set_record(monkeypatch, VCS_RECORD)
     calls = []
@@ -168,7 +159,7 @@ def test_clear_cache_forces_a_recheck(monkeypatch) -> None:
     calls = []
     monkeypatch.setattr(update, "remote_commit", lambda *a: calls.append(1) or REMOTE)
     update.check_for_update()
-    update.clear_cache()
+    update.drop_cache(update.CACHE_NAME)
     update.check_for_update()
     assert len(calls) == 2
 

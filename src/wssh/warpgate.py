@@ -51,24 +51,13 @@ class ApiClient:
 
 
 class WarpgateClient(ApiClient):
-    def __init__(
-        self,
-        config: WsshConfig,
-        *,
-        token: str | None = None,
-        session_cookie: str | None = None,
-    ) -> None:
+    def __init__(self, config: WsshConfig, *, token: str | None = None) -> None:
         super().__init__(config.user_api_base)
         self.config = config
         self._token = token
-        self._session_cookie = session_cookie
 
     def _headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json"}
-        if self._session_cookie:
-            # Cookie auth: sending a token too would authenticate as the wrong identity.
-            headers["Cookie"] = f"warpgate-http-session={self._session_cookie}"
-            return headers
         token = self._token or self.config.effective_api_token()
         if token:
             headers["X-Warpgate-Token"] = token
@@ -83,13 +72,6 @@ class WarpgateClient(ApiClient):
             "POST",
             "/profile/credentials/public-keys",
             json={"label": label, "openssh_public_key": key},
-        ).json()
-
-    def create_api_token(self, label: str, expiry_iso: str) -> dict[str, Any]:
-        return self._request(
-            "POST",
-            "/profile/api-tokens",
-            json={"label": label, "expiry": expiry_iso},
         ).json()
 
     def get_targets(self, search: str = "") -> list[dict[str, Any]]:
