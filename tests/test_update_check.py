@@ -187,6 +187,31 @@ def test_notice_silent_when_stderr_is_not_a_tty(monkeypatch, capsys) -> None:
     assert capsys.readouterr().err == ""
 
 
+def test_notice_comes_before_the_session_not_after(monkeypatch) -> None:
+    """Read on the way in, where it can still be acted on — not after ssh exits."""
+    from wssh import cli
+
+    order: list[str] = []
+    monkeypatch.setattr(cli, "maybe_notify_update", lambda: order.append("notice"))
+    monkeypatch.setattr(cli, "connect", lambda target, args: order.append("session") or 0)
+    monkeypatch.setattr(sys, "argv", ["wssh", "docker04"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    assert order == ["notice", "session"]
+
+
+def test_self_reporting_commands_are_not_double_notified(monkeypatch) -> None:
+    from wssh import cli
+
+    called: list[str] = []
+    monkeypatch.setattr(cli, "maybe_notify_update", lambda: called.append("notice"))
+    monkeypatch.setattr(cli, "version_line", lambda: "abc1234")
+    monkeypatch.setattr(sys, "argv", ["wssh", "version"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    assert called == [], "wssh version reports its own update state"
+
+
 def test_notice_never_raises(monkeypatch) -> None:
     """A cosmetic check must not be the reason a connection fails."""
     monkeypatch.setattr(sys.stderr, "isatty", lambda: True, raising=False)

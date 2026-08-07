@@ -341,17 +341,17 @@ def _dispatch(argv: list[str]) -> None:
 
 def main() -> None:
     argv = _parse_global_flags(sys.argv[1:])
-    # After the command, not before: a notice printed ahead of an ssh session is
-    # gone by the time the session ends. The commands in _SELF_REPORTING report
-    # their own update state, so the banner would only duplicate it.
-    notify = not argv or argv[0] not in _SELF_REPORTING
+    # Before the command, not after: the notice is read on the way in to a session,
+    # where it can still be acted on. Once a day it costs a `git ls-remote` (5s
+    # ceiling) ahead of the connection; every other run reads the cache. The
+    # commands in _SELF_REPORTING report their own update state, so the banner
+    # would only duplicate it.
+    if not argv or argv[0] not in _SELF_REPORTING:
+        maybe_notify_update()
     try:
         _dispatch(argv)
     except typer.Exit as exc:
         sys.exit(exc.exit_code)
-    finally:
-        if notify:
-            maybe_notify_update()
 
 
 if __name__ == "__main__":

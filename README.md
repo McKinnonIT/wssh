@@ -111,7 +111,8 @@ Targets are cached under `~/.wssh/cache/` for 24 hours so completion stays fast;
 
 ## Staying up to date
 
-`wssh` tells you when the repo has moved on, after the command finishes:
+`wssh` tells you when the repo has moved on, before the command runs — on the way in to
+a session, where you can still act on it:
 
 ```
 Update available (2db85ba → 5c019d5) — run wssh update
