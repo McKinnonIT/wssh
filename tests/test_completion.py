@@ -14,6 +14,7 @@ def test_command_tree_matches_registered_cli_commands() -> None:
     assert set(tree) == {
         "setup",
         "setup-server",
+        "scp",
         "auth",
         "targets",
         "credentials",

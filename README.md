@@ -40,6 +40,17 @@ wssh dns01 -- systemctl status nginx    # run a remote command
 wssh dns01 -L 8080:localhost:80         # arguments pass through to ssh
 ```
 
+Copy files with target names in place of hostnames:
+
+```bash
+wssh scp ./notes.txt dns01:~/           # up
+wssh scp -r dns01:/etc/nginx .          # down, options pass through to scp
+wssh scp docker04:~/file.txt docker02:~/  # target to target
+```
+
+Warpgate picks the target from the SSH username, so one `scp` can reach exactly one
+target — a target-to-target copy runs as two copies staged on your local disk.
+
 Target names tab-complete once setup has run. Anything that is not a known subcommand is treated as a target name.
 
 Misspelled names get a suggestion instead of a failed connection:
@@ -59,6 +70,7 @@ If a connection fails, `wssh` checks whether the target exists in Warpgate, whet
 | `wssh <target> [args…]` | Connect to a target; remaining arguments go to `ssh` |
 | `wssh setup` | First-time setup: host, username, SSH key, sign-in, completion |
 | `wssh setup-server <name>` | Install Warpgate client keys on a server and register it as a target |
+| `wssh scp [opts] SRC… DST` | Copy files using `target:path`; remaining options go to `scp` |
 | `wssh auth login` | Sign in and store an API token |
 | `wssh auth logout` | Remove the stored API token |
 | `wssh targets list` | List SSH targets you can access |

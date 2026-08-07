@@ -6,6 +6,8 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 from typing import Literal
 
 from wssh.config import WsshConfig
@@ -80,12 +82,15 @@ def _ssh_base_cmd(config: WsshConfig, *, batch_mode: bool = False) -> list[str]:
     cmd = ["ssh", "-p", str(config.port), "-o", "PreferredAuthentications=publickey"]
     if batch_mode:
         cmd.extend(["-o", "BatchMode=yes"])
-    pub = find_public_key()
-    if pub:
-        priv = private_key_path(pub)
-        if priv:
-            cmd.extend(["-i", str(priv), "-o", "IdentitiesOnly=yes"])
+    cmd.extend(_identity_opts())
     return cmd
+
+
+def _identity_opts() -> list[str]:
+    """Pin ssh/scp to the key wssh uploaded to Warpgate."""
+    pub = find_public_key()
+    priv = private_key_path(pub) if pub else None
+    return ["-i", str(priv), "-o", "IdentitiesOnly=yes"] if priv else []
 
 
 def _prepare_stdio_for_ssh() -> None:
@@ -186,6 +191,121 @@ def run_direct_ssh(
         print("Would run:", " ".join(cmd))
         return 0
     return subprocess.call(cmd, stdin=sys.stdin, env=ssh_env())
+
+
+# scp's own rule for telling a remote spec from a local path: a colon before any slash.
+_SCP_REMOTE = re.compile(r"^([^/:]+):(.*)$")
+# scp options that swallow the next argument, which is therefore not a path.
+_SCP_VALUE_FLAGS = frozenset({"-c", "-F", "-i", "-J", "-l", "-o", "-P", "-S", "-X"})
+
+
+def split_remote(arg: str) -> tuple[str, str] | None:
+    """('dns01', '/etc/hosts') for a remote spec, None for a local path."""
+    match = _SCP_REMOTE.match(arg)
+    return (match.group(1), match.group(2)) if match else None
+
+
+def _split_scp_args(args: list[str]) -> tuple[list[str], list[str]]:
+    """Separate scp options from path operands."""
+    flags: list[str] = []
+    paths: list[str] = []
+    want_value = False
+    for arg in args:
+        if want_value:
+            flags.append(arg)
+            want_value = False
+        elif arg.startswith("-") and arg != "-":
+            flags.append(arg)
+            want_value = arg in _SCP_VALUE_FLAGS
+        else:
+            paths.append(arg)
+    return flags, paths
+
+
+def _scp_cmd(config: WsshConfig, target: str, args: list[str]) -> list[str]:
+    """Warpgate selects the target from the SSH username, not the hostname.
+
+    Passing it as ``-o User=`` rather than ``user:target@host:path`` keeps the colons
+    out of scp's own host:path parsing, which would otherwise split in the wrong place.
+    """
+    return [
+        "scp",
+        "-P",
+        str(config.port),
+        "-o",
+        f"User={config.user}:{target}",
+        "-o",
+        "PreferredAuthentications=publickey",
+        *_identity_opts(),
+        *args,
+    ]
+
+
+def _for_scp(config: WsshConfig, arg: str) -> str:
+    """Rewrite ``target:path`` to the bastion's own ``host:path``."""
+    spec = split_remote(arg)
+    return f"{config.host}:{spec[1]}" if spec else arg
+
+
+def _scp_between(
+    config: WsshConfig,
+    src_target: str,
+    dest_target: str,
+    flags: list[str],
+    sources: list[str],
+    dest: str,
+) -> int:
+    """Copy across two targets, staging on the local disk in between.
+
+    One scp reaches exactly one target — the target lives in the SSH username — so
+    there is no single command for this, with or without ``-3``. Staging a directory
+    rather than named files lets ``-r`` and globs come out the far side intact.
+    """
+    # ponytail: stages through local disk; stream over ssh if the files stop fitting.
+    print(f"{src_target} → (local) → {dest_target}", file=sys.stderr)
+    with tempfile.TemporaryDirectory(prefix="wssh-scp-") as tmp:
+        pull = [*flags, *(_for_scp(config, s) for s in sources), tmp]
+        code = subprocess.call(_scp_cmd(config, src_target, pull))
+        if code:
+            return code
+        staged = [str(p) for p in sorted(Path(tmp).iterdir())]
+        if not staged:
+            print(f"Nothing copied from {src_target}", file=sys.stderr)
+            return 1
+        push = [*flags, *staged, _for_scp(config, dest)]
+        return subprocess.call(_scp_cmd(config, dest_target, push))
+
+
+def run_scp(config: WsshConfig, args: list[str]) -> int:
+    """scp with ``target:path`` in place of ``host:path``."""
+    if not config.host or not config.user:
+        print("Warpgate not configured — run: wssh setup", file=sys.stderr)
+        return 1
+    flags, paths = _split_scp_args(args)
+    if len(paths) < 2:
+        print("usage: wssh scp [scp options] SOURCE... DEST", file=sys.stderr)
+        return 1
+
+    *sources, dest = paths
+    src_targets = {spec[0] for spec in map(split_remote, sources) if spec}
+    dest_spec = split_remote(dest)
+    dest_target = dest_spec[0] if dest_spec else None
+    targets = src_targets | ({dest_target} if dest_target else set())
+
+    if not targets:
+        print("Both paths are local — plain scp already does that", file=sys.stderr)
+        return 1
+    if len(targets) == 1:
+        rewritten = [*flags, *(_for_scp(config, p) for p in paths)]
+        return subprocess.call(_scp_cmd(config, targets.pop(), rewritten))
+    if len(src_targets) == 1 and dest_target:
+        return _scp_between(config, src_targets.pop(), dest_target, flags, sources, dest)
+    print(
+        f"One target per copy: {', '.join(sorted(targets))} is more than a source "
+        "and a destination. Run it as separate commands.",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def format_ssh_hint(stderr: str, *, target: str | None = None, stdout: str = "") -> str:

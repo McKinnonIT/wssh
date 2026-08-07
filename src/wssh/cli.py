@@ -12,7 +12,13 @@ from rich.prompt import Confirm
 from wssh.auth import login_interactive, logout
 from wssh.completion import bash_completion, command_tree, zsh_completion
 from wssh.config import default_config_path, load_config
-from wssh.connect import classify_ssh_failure, format_ssh_hint, run_ssh, run_ssh_capture
+from wssh.connect import (
+    classify_ssh_failure,
+    format_ssh_hint,
+    run_scp,
+    run_ssh,
+    run_ssh_capture,
+)
 from wssh.server_setup import (
     explain_target_not_visible,
     maybe_offer_setup,
@@ -198,6 +204,15 @@ def credentials_add_key(
             return
         client.add_public_key(key_label, line)
     console.print("[green]Public key added[/green]")
+
+
+@app.command(
+    "scp",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def scp_cmd(ctx: typer.Context) -> None:
+    """Copy files, using target names: wssh scp dns01:/etc/hosts ."""
+    raise typer.Exit(run_scp(_config(), ctx.args))
 
 
 @app.command("completion")
