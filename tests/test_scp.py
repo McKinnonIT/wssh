@@ -57,6 +57,36 @@ def test_cross_target_copy_stages_locally(monkeypatch) -> None:
     assert push[-1] == "ssh.mckinnon.tech:~/"
 
 
+def test_partial_pull_still_pushes_what_copied(monkeypatch, capsys) -> None:
+    """scp -r exits non-zero on one unreadable file — that must not discard the rest."""
+    calls: list[list[str]] = []
+
+    def fake_call(cmd, **kwargs):
+        calls.append(cmd)
+        dest = Path(cmd[-1])
+        if dest.name.startswith("wssh-scp-"):
+            (dest / "guacamole-ap").mkdir()
+            return 1  # some files were unreadable
+        return 0
+
+    monkeypatch.setattr("wssh.connect.subprocess.call", fake_call)
+    code = run_scp(CONFIG, ["-r", "docker02:/apps/guacamole-ap", "docker04:/apps/"])
+    assert len(calls) == 2, "the push must still run"
+    assert code == 1, "an incomplete copy must not report success"
+    err = capsys.readouterr().err
+    assert "was incomplete" in err and "missing files" in err
+
+
+def test_pull_that_copied_nothing_does_not_touch_the_destination(monkeypatch, capsys) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "wssh.connect.subprocess.call", lambda cmd, **k: calls.append(cmd) or 1
+    )
+    assert run_scp(CONFIG, ["-r", "docker02:/apps/x", "docker04:/apps/"]) == 1
+    assert len(calls) == 1, "nothing staged — the destination must be left alone"
+    assert "was not touched" in capsys.readouterr().err
+
+
 def test_three_targets_is_refused(monkeypatch) -> None:
     calls = _record(monkeypatch)
     assert run_scp(CONFIG, ["a01:/f", "b01:/f", "c01:/tmp/"]) == 1

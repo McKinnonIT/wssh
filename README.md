@@ -49,7 +49,17 @@ wssh scp docker04:~/file.txt docker02:~/  # target to target
 ```
 
 Warpgate picks the target from the SSH username, so one `scp` can reach exactly one
-target — a target-to-target copy runs as two copies staged on your local disk.
+target — a target-to-target copy runs as two copies staged on your local disk. If the
+pull half is incomplete (`-r` over a tree with unreadable files), wssh pushes what did
+copy, says so, and exits non-zero: the destination is left partial, not empty.
+
+For a tree wssh cannot read in full, stream it as root instead — one pass, permissions
+and ownership intact:
+
+```bash
+wssh docker02 -- sudo tar -czf - -C /apps guacamole-ap \
+  | wssh docker04 -- sudo tar -xzf - -C /apps
+```
 
 Target names tab-complete once setup has run. Anything that is not a known subcommand is treated as a target name.
 

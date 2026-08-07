@@ -260,20 +260,38 @@ def _scp_between(
     One scp reaches exactly one target — the target lives in the SSH username — so
     there is no single command for this, with or without ``-3``. Staging a directory
     rather than named files lets ``-r`` and globs come out the far side intact.
+
+    A failed leg is reported in wssh's own words. Two invisible copies with only
+    scp's per-file complaints in between leave no way to tell how far it got.
     """
     # ponytail: stages through local disk; stream over ssh if the files stop fitting.
     print(f"{src_target} → (local) → {dest_target}", file=sys.stderr)
     with tempfile.TemporaryDirectory(prefix="wssh-scp-") as tmp:
         pull = [*flags, *(_for_scp(config, s) for s in sources), tmp]
-        code = subprocess.call(_scp_cmd(config, src_target, pull))
-        if code:
-            return code
+        pull_code = subprocess.call(_scp_cmd(config, src_target, pull))
         staged = [str(p) for p in sorted(Path(tmp).iterdir())]
+
         if not staged:
-            print(f"Nothing copied from {src_target}", file=sys.stderr)
-            return 1
+            print(
+                f"Nothing was pulled from {src_target} — {dest_target} was not touched.",
+                file=sys.stderr,
+            )
+            return pull_code or 1
+        if pull_code:
+            # scp -r copies what it can and still exits non-zero, so one unreadable
+            # file used to discard an otherwise complete tree. Push what arrived and
+            # keep the failing exit code: same bargain scp makes on a single hop.
+            print(
+                f"Pull from {src_target} was incomplete — pushing what did copy, "
+                f"so {dest_target} will be missing files.",
+                file=sys.stderr,
+            )
+
         push = [*flags, *staged, _for_scp(config, dest)]
-        return subprocess.call(_scp_cmd(config, dest_target, push))
+        code = subprocess.call(_scp_cmd(config, dest_target, push)) or pull_code
+        if code:
+            print(f"{src_target} → {dest_target} did not complete cleanly.", file=sys.stderr)
+        return code
 
 
 def run_scp(config: WsshConfig, args: list[str]) -> int:
