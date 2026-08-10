@@ -140,14 +140,14 @@ Up to date
 
 An install that did not come from git prints `unknown`, since there is no commit to name.
 
-`wssh version` checks live rather than reading the cache, since you are asking right now. Piped (`wssh version | …`) it prints the commit alone and makes no network call, so scripts stay fast.
+Piped (`wssh version | …`) it prints the commit alone and makes no network call, so scripts stay fast.
 
 The check compares the commit `pip` recorded for your install against `git ls-remote` on the repo. Because two commits cannot be ordered without a local clone, a copy installed from a branch that is *ahead* of `main` also reports an update — both short commits are always shown so you can tell.
 
 | Behaviour | |
 |---|---|
-| Frequency | Network is touched once per 24 hours; the result is cached in `~/.wssh/cache/update.json` |
-| Output | stderr only, and only when stderr is a terminal — piping stays clean |
+| Frequency | Every interactive run, asked live — roughly half a second for `git ls-remote`, 5s ceiling. Nothing is cached: a day-long cache hid commits pushed after the last check |
+| Output | stderr only, and only when **both** streams are a terminal. Piped or captured runs print nothing and make no network call — `eval "$(wssh completion zsh)"` in your rc file must not greet every new shell |
 | Failure | Offline, no `git`, or no repo access means no notice, never an error or a delay |
 | Not a git install | Silent, since there is no commit to compare |
 | Opt out | `WSSH_NO_UPDATE_CHECK=1` silences the notice and the `wssh version` check. `wssh update --check` ignores it — checking is that command's whole purpose |

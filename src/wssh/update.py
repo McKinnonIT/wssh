@@ -19,11 +19,7 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 
 from rich.console import Console
 
-from wssh.cache import drop_cache, is_fresh, read_cache, write_cache
-
 DEFAULT_REPO = "https://github.com/McKinnonIT/wssh.git"
-CACHE_NAME = "update.json"
-CHECK_INTERVAL_SECONDS = 24 * 3600
 LS_REMOTE_TIMEOUT = 5
 
 console = Console()
@@ -141,8 +137,10 @@ def check_disabled() -> bool:
 def check_for_update() -> str | None:
     """Remote commit when it differs from the installed one, else None.
 
-    Result is cached for a day, so the network is touched once regardless of how
-    often wssh runs.
+    Asked live, every run. A day-long cache meant a commit pushed after the last
+    check stayed invisible for a day — exactly when you want to hear about it.
+    The caller has already established that someone is watching, and pays one
+    ls-remote (5s ceiling) for the answer.
     """
     if check_disabled():
         return None
@@ -150,14 +148,7 @@ def check_for_update() -> str | None:
     if not local:
         return None
 
-    cached = read_cache(CACHE_NAME)
-    if is_fresh(cached, CHECK_INTERVAL_SECONDS):
-        remote = cached.get("remote_commit")
-    else:
-        remote = remote_commit()
-        # Recorded even when None: an outage must not be retried on every run.
-        write_cache(CACHE_NAME, {"remote_commit": remote})
-
+    remote = remote_commit()
     if not remote or remote == local:
         return None
     # ponytail: commit inequality, not ordering — two commits cannot be ranked
@@ -217,7 +208,6 @@ def report_update_status(*, brief: bool = False) -> int:
         )
         return 0
 
-    write_cache(CACHE_NAME, {"remote_commit": remote})
     if remote == local:
         suffix = "" if brief else f" [dim]({local[:7]})[/dim]"
         console.print(f"[green]Up to date[/green]{suffix}")
@@ -246,8 +236,6 @@ def run_update(*, force: bool = False) -> int:
     """Install the latest commit, skipping the reinstall when already on it."""
     local = installed_commit()
     remote = remote_commit() if local else None
-    if remote:
-        write_cache(CACHE_NAME, {"remote_commit": remote})
 
     if remote and remote == local:
         if not force:
@@ -269,8 +257,5 @@ def run_update(*, force: bool = False) -> int:
     if code != 0:
         console.print("[red]Update failed[/red]")
         return code
-    # This process still reports the pre-update commit, so a stale cached result
-    # would keep nagging about an update that just landed.
-    drop_cache(CACHE_NAME)
     console.print("[green]wssh updated[/green] [dim]— open a new shell to reload completion[/dim]")
     return 0

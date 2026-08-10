@@ -110,7 +110,7 @@ def test_remote_commit_returns_none_when_it_cannot_read(monkeypatch, outcome) ->
     assert real_remote_commit("https://example.test/r.git") is None
 
 
-# --- the cached comparison ------------------------------------------------- #
+# --- the comparison -------------------------------------------------------- #
 
 
 def test_reports_a_differing_remote_commit(monkeypatch) -> None:
@@ -125,22 +125,20 @@ def test_silent_when_already_at_the_remote_commit(monkeypatch) -> None:
     assert update.check_for_update() is None
 
 
-def test_second_call_uses_the_cache(monkeypatch) -> None:
+def test_every_run_asks_the_remote(monkeypatch) -> None:
+    """Cached for a day, a commit pushed after the last check stayed invisible."""
     set_record(monkeypatch, VCS_RECORD)
     calls = []
     monkeypatch.setattr(update, "remote_commit", lambda *a: calls.append(1) or REMOTE)
     assert update.check_for_update() == REMOTE
     assert update.check_for_update() == REMOTE
-    assert len(calls) == 1, "the network must be touched once per interval, not per run"
+    assert len(calls) == 2, "no cache may stand between the user and a new commit"
 
 
-def test_offline_check_is_not_retried_every_run(monkeypatch) -> None:
+def test_an_unreachable_remote_is_silent_not_fatal(monkeypatch) -> None:
     set_record(monkeypatch, VCS_RECORD)
-    calls = []
-    monkeypatch.setattr(update, "remote_commit", lambda *a: calls.append(1) or None)
+    monkeypatch.setattr(update, "remote_commit", lambda *a: None)
     assert update.check_for_update() is None
-    assert update.check_for_update() is None
-    assert len(calls) == 1, "a failed check must still be recorded"
 
 
 def test_non_git_install_never_checks(monkeypatch) -> None:
@@ -152,16 +150,6 @@ def test_env_var_opts_out(monkeypatch) -> None:
     set_record(monkeypatch, VCS_RECORD)
     monkeypatch.setenv("WSSH_NO_UPDATE_CHECK", "1")
     assert update.check_for_update() is None  # remote_commit would fail the test
-
-
-def test_clear_cache_forces_a_recheck(monkeypatch) -> None:
-    set_record(monkeypatch, VCS_RECORD)
-    calls = []
-    monkeypatch.setattr(update, "remote_commit", lambda *a: calls.append(1) or REMOTE)
-    update.check_for_update()
-    update.drop_cache(update.CACHE_NAME)
-    update.check_for_update()
-    assert len(calls) == 2
 
 
 # --- the notice ------------------------------------------------------------ #
