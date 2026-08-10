@@ -167,10 +167,16 @@ def test_clear_cache_forces_a_recheck(monkeypatch) -> None:
 # --- the notice ------------------------------------------------------------ #
 
 
+def _interactive(monkeypatch) -> None:
+    """Both streams on a terminal — the only state that prints a banner."""
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+
+
 def test_notice_names_both_commits_and_the_command(monkeypatch, capsys) -> None:
     set_record(monkeypatch, VCS_RECORD)
     monkeypatch.setattr(update, "remote_commit", lambda *a: REMOTE)
-    monkeypatch.setattr(sys.stderr, "isatty", lambda: True, raising=False)
+    _interactive(monkeypatch)
     update.maybe_notify_update()
     printed = capsys.readouterr()
     assert printed.out == "", "the notice must not pollute stdout"
@@ -212,9 +218,20 @@ def test_self_reporting_commands_are_not_double_notified(monkeypatch) -> None:
     assert called == [], "wssh version reports its own update state"
 
 
+def test_notice_silent_when_stdout_is_captured(monkeypatch, capsys) -> None:
+    """`eval "$(wssh completion zsh)"` leaves stderr on the terminal — a banner
+    there greets every new shell, from a command the user never typed."""
+    set_record(monkeypatch, VCS_RECORD)
+    monkeypatch.setattr(update, "remote_commit", lambda *a: REMOTE)
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False, raising=False)
+    update.maybe_notify_update()
+    assert capsys.readouterr().err == ""
+
+
 def test_notice_never_raises(monkeypatch) -> None:
     """A cosmetic check must not be the reason a connection fails."""
-    monkeypatch.setattr(sys.stderr, "isatty", lambda: True, raising=False)
+    _interactive(monkeypatch)
     monkeypatch.setattr(update, "check_for_update", lambda **k: 1 / 0)
     update.maybe_notify_update()
 

@@ -174,8 +174,11 @@ def check_for_update() -> str | None:
 
 def maybe_notify_update() -> None:
     """Print a one-line update notice. Never raises, never touches stdout."""
-    if not sys.stderr.isatty():
-        return  # piped or scripted: nobody is reading a banner
+    if not (sys.stderr.isatty() and sys.stdout.isatty()):
+        # Both, not just the stream it prints on. `eval "$(wssh completion zsh)"`
+        # in an rc file has a terminal on stderr and a pipe on stdout — a banner
+        # there greets every new shell, from a command the user never typed.
+        return  # piped, captured, or scripted: nobody is reading a banner
     try:
         remote = check_for_update()
         if not remote:
