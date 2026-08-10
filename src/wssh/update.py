@@ -90,11 +90,6 @@ def repo_url() -> str:
     return DEFAULT_REPO
 
 
-def repo_spec() -> str:
-    """pip requirement for the wssh repo."""
-    return f"git+{repo_url()}"
-
-
 # --------------------------------------------------------------------------- #
 # What is on the remote
 # --------------------------------------------------------------------------- #
@@ -210,7 +205,7 @@ def report_update_status(*, brief: bool = False) -> int:
             "[yellow]This copy was not installed from git, so there is nothing to "
             "compare against.[/yellow]\n"
             f"[dim]Install from the repo to enable update checks:[/dim] "
-            f"pipx install --force {repo_spec()}"
+            f"pipx install --force git+{repo_url()}"
         )
         return 0
 
@@ -241,7 +236,7 @@ def update_command() -> list[str]:
     pyproject rarely changes between commits, so pip would otherwise decide the
     requirement is already satisfied and install nothing.
     """
-    spec = repo_spec()
+    spec = f"git+{repo_url()}"
     if shutil.which("pipx"):
         return ["pipx", "install", "--force", spec]
     return [sys.executable, "-m", "pip", "install", "--force-reinstall", spec]

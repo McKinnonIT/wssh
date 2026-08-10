@@ -63,9 +63,6 @@ class WarpgateClient(ApiClient):
             headers["X-Warpgate-Token"] = token
         return headers
 
-    def get_credentials(self) -> dict[str, Any]:
-        return self._request("GET", "/profile/credentials").json()
-
     def add_public_key(self, label: str, openssh_public_key: str) -> dict[str, Any]:
         key = normalize_openssh_public_key(openssh_public_key)
         return self._request(
@@ -99,7 +96,7 @@ class WarpgateClient(ApiClient):
                 admin_keys = admin.list_user_public_keys(self.config.user.strip())
             if admin_keys is not None:
                 return admin_keys
-        creds = self.get_credentials()
+        creds = self._request("GET", "/profile/credentials").json()
         return list(creds.get("public_keys") or creds.get("publicKeys") or [])
 
     def find_matching_public_key(self, openssh_line: str) -> dict[str, Any] | None:

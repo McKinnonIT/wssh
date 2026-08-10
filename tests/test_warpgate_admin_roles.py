@@ -34,19 +34,31 @@ def test_ensure_target_role_assigns_admin(config: WsshConfig, httpx_mock) -> Non
         assert admin.ensure_target_role("target-uuid", "admin") is True
 
 
-def test_assign_target_role_treats_409_as_already_assigned(
+def test_409_on_assign_is_already_assigned_not_an_error(
     config: WsshConfig, httpx_mock
 ) -> None:
+    """The role can be granted between our read of the list and our write to it."""
+    httpx_mock.add_response(
+        url="https://bastion.example.com/@warpgate/admin/api/roles",
+        json=[{"id": "role-admin-uuid", "name": "admin"}],
+    )
+    httpx_mock.add_response(
+        url=(
+            "https://bastion.example.com/@warpgate/admin/api/targets/"
+            "target-uuid/roles"
+        ),
+        json=[],
+    )
     httpx_mock.add_response(
         method="POST",
         url=(
             "https://bastion.example.com/@warpgate/admin/api/targets/"
-            "target-uuid/roles/role-uuid"
+            "target-uuid/roles/role-admin-uuid"
         ),
         status_code=409,
     )
     with WarpgateAdminClient(config) as admin:
-        admin.assign_target_role("target-uuid", "role-uuid")  # must not raise
+        assert admin.ensure_target_role("target-uuid", "admin") is True  # must not raise
 
 
 def test_admin_403_explains_missing_permissions(config: WsshConfig, httpx_mock) -> None:

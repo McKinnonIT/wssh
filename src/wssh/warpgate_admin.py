@@ -99,42 +99,28 @@ class WarpgateAdminClient(ApiClient):
         except (WarpgateApiError, httpx.HTTPError):
             return None
 
-    def list_roles(self) -> list[dict[str, Any]]:
-        return self._request("GET", "/roles").json()
-
-    def find_role_by_name(self, name: str) -> dict[str, Any] | None:
-        for role in self.list_roles():
-            if role.get("name") == name:
-                return role
-        return None
-
-    def list_target_roles(self, target_id: str | UUID) -> list[dict[str, Any]]:
-        tid = str(target_id)
-        return self._request("GET", f"/targets/{tid}/roles").json()
-
-    def target_has_role(self, target_id: str | UUID, role_id: str | UUID) -> bool:
-        rid = str(role_id).lower()
-        return any(str(r.get("id", "")).lower() == rid for r in self.list_target_roles(target_id))
-
-    def assign_target_role(self, target_id: str | UUID, role_id: str | UUID) -> None:
-        try:
-            self._request("POST", f"/targets/{target_id}/roles/{role_id}")
-        except WarpgateApiError as exc:
-            if exc.status_code != 409:  # 409 = already assigned
-                raise
-
     def ensure_target_role(
         self,
         target_id: str | UUID,
         role_name: str = DEFAULT_TARGET_ROLE,
     ) -> bool:
         """Grant role access on a target. Returns True if the role was newly assigned."""
-        role = self.find_role_by_name(role_name)
+        role = next(
+            (r for r in self._request("GET", "/roles").json() if r.get("name") == role_name),
+            None,
+        )
         if not role or not role.get("id"):
             raise WarpgateApiError(f"Warpgate role '{role_name}' not found")
-        if self.target_has_role(target_id, role["id"]):
+
+        tid, rid = str(target_id), str(role["id"])
+        assigned = self._request("GET", f"/targets/{tid}/roles").json()
+        if any(str(r.get("id", "")).lower() == rid.lower() for r in assigned):
             return False
-        self.assign_target_role(target_id, role["id"])
+        try:
+            self._request("POST", f"/targets/{tid}/roles/{rid}")
+        except WarpgateApiError as exc:
+            if exc.status_code != 409:  # 409 = assigned between the read and the write
+                raise
         return True
 
     def _ssh_options(

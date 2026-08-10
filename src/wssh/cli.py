@@ -69,16 +69,13 @@ def _parse_global_flags(argv: list[str]) -> list[str]:
     (``wssh dns01``) is not a subcommand and never reaches Typer.
     """
     global _state_config_path
-    rest: list[str] = []
-    i = 0
-    while i < len(argv):
-        if argv[i] == "--config" and i + 1 < len(argv):
-            _state_config_path = Path(argv[i + 1])
-            i += 1
-        else:
-            rest.append(argv[i])
-        i += 1
-    return rest
+    # argv[:-1] because the flag is only ours when something follows it — a trailing
+    # bare --config belongs to Typer, which has the error message for it.
+    if "--config" in argv[:-1]:
+        i = argv.index("--config")
+        _state_config_path = Path(argv[i + 1])
+        return argv[:i] + argv[i + 2 :]
+    return argv
 
 
 def _config():
