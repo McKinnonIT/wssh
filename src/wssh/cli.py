@@ -44,9 +44,16 @@ from wssh.warpgate import WarpgateApiError, WarpgateClient
 
 app = typer.Typer(
     name="wssh",
-    help="SSH to Warpgate targets from your terminal",
+    help=(
+        "SSH to Warpgate targets from your terminal.\n\n"
+        "Anything that is not a command below is treated as a target name: "
+        # \\[ escapes the bracket — Rich would read it as a markup tag and eat it.
+        "[bold]wssh <target> \\[ssh args…][/bold] opens a shell, and trailing "
+        "arguments are passed straight to ssh."
+    ),
     no_args_is_help=True,
     add_completion=False,
+    rich_markup_mode="rich",
 )
 auth_app = typer.Typer(help="Authentication")
 targets_app = typer.Typer(help="Warpgate targets")
@@ -79,21 +86,31 @@ def _config():
     return load_config(_state_config_path)
 
 
+# Declared here only so `--help` lists it. _parse_global_flags has already
+# stripped and applied --config by the time Typer runs — it has to, because a
+# bare target name never reaches Typer at all.
 @app.callback(invoke_without_command=True)
-def main_callback(ctx: typer.Context) -> None:
+def main_callback(
+    ctx: typer.Context,
+    config: Path | None = typer.Option(
+        None, "--config", metavar="PATH", help="Use a different config file"
+    ),
+) -> None:
     if ctx.invoked_subcommand is None:
         console.print(ctx.get_help())
 
 
 @app.command("setup")
 def setup_cmd(
-    dry_run: bool = typer.Option(False, "--dry-run", "-n"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would change without doing it"
+    ),
     manual_credentials: bool = typer.Option(
         False,
         "--manual-credentials",
         help="Paste SSH key in Warpgate UI instead of API upload",
     ),
-    skip_auth: bool = typer.Option(False, "--skip-auth"),
+    skip_auth: bool = typer.Option(False, "--skip-auth", help="Skip the Warpgate sign-in step"),
 ) -> None:
     """First-time setup: email, SSH key, auth, shell completion."""
     run_setup(
@@ -150,7 +167,7 @@ def targets_refresh_cmd() -> None:
 @credentials_app.command("add-key")
 def credentials_add_key(
     key_path: Path | None = typer.Option(None, "--key", help="Path to .pub file"),
-    label: str | None = typer.Option(None, "--label"),
+    label: str | None = typer.Option(None, "--label", help="Name the key in Warpgate"),
 ) -> None:
     """Upload your SSH public key to Warpgate."""
     config = _config()
@@ -215,7 +232,9 @@ def completion_cmd(shell: str = typer.Argument(..., help="bash or zsh")) -> None
 @app.command("setup-server")
 def setup_server_cmd(
     name: str = typer.Argument(..., help="Warpgate target name (e.g. dns01)"),
-    dry_run: bool = typer.Option(False, "--dry-run", "-n"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would change without doing it"
+    ),
 ) -> None:
     """Install Warpgate keys on a server and register it in Warpgate."""
     try:
