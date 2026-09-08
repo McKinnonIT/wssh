@@ -43,6 +43,9 @@ install_system_packages() {
             elif need_cmd dnf && can_sudo; then
                 echo "Installing Python, pipx, and OpenSSH via dnf…"
                 sudo dnf install -y python3 python3-pip pipx openssh-clients
+            elif need_cmd pacman && can_sudo; then
+                echo "Installing Python, pipx, and OpenSSH via pacman…"
+                sudo pacman -Sy --needed --noconfirm python python-pipx openssh
             fi
             ;;
     esac

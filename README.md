@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/McKinnonIT/wssh/main/install.sh | b
 wssh setup
 ```
 
-The installer adds Python, pipx, and OpenSSH where they are missing (Homebrew, apt, or dnf), then installs `wssh` with pipx. Set `WSSH_REPO` to install from a fork.
+The installer adds Python, pipx, and OpenSSH where they are missing (Homebrew, apt, dnf, or pacman), then installs `wssh` with pipx. Set `WSSH_REPO` to install from a fork.
 
 From a clone instead:
 
