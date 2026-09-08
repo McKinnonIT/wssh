@@ -58,9 +58,6 @@ app.add_typer(credentials_app, name="credentials")
 console = Console()
 _state_config_path: Path | None = None
 
-# Commands that print their own update status.
-_SELF_REPORTING = frozenset({"update", "version"})
-
 
 def _parse_global_flags(argv: list[str]) -> list[str]:
     """Extract --config <path> from argv; return remaining args.
@@ -341,9 +338,9 @@ def main() -> None:
     # Before the command, not after: the notice is read on the way in to a session,
     # where it can still be acted on. Once a day it costs a `git ls-remote` (5s
     # ceiling) ahead of the connection; every other run reads the cache. The
-    # commands in _SELF_REPORTING report their own update state, so the banner
-    # would only duplicate it.
-    if not argv or argv[0] not in _SELF_REPORTING:
+    # `update` and `version` report their own update state, so the banner would
+    # only duplicate it.
+    if not argv or argv[0] not in ("update", "version"):
         maybe_notify_update()
     try:
         _dispatch(argv)

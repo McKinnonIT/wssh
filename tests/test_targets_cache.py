@@ -1,32 +1,59 @@
+import json
 import time
 
-from wssh.cache import is_fresh, read_cache, write_cache
-from wssh.targets import CACHE_TTL_SECONDS
+import pytest
+
+from wssh import targets
+from wssh.config import WsshConfig
+from wssh.targets import CACHE_TTL_SECONDS, get_target_names
 
 
-def test_cache_is_fresh() -> None:
-    assert is_fresh({"fetched_at": time.time()}, CACHE_TTL_SECONDS)
+@pytest.fixture(autouse=True)
+def isolate(monkeypatch, tmp_path):
+    """Never touch the real cache, and never reach the network by accident."""
+    monkeypatch.setattr("wssh.targets.default_cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        targets,
+        "fetch_ssh_target_names",
+        lambda config: pytest.fail("unexpected API call"),
+    )
+    return tmp_path
 
 
-def test_cache_is_stale() -> None:
-    assert not is_fresh({"fetched_at": time.time() - CACHE_TTL_SECONDS - 1}, CACHE_TTL_SECONDS)
+def write_raw(tmp_path, payload: object) -> None:
+    (tmp_path / "targets.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
-def test_cache_missing_or_legacy_iso_timestamp_is_stale() -> None:
-    assert not is_fresh(None, CACHE_TTL_SECONDS)
-    assert not is_fresh({}, CACHE_TTL_SECONDS)
-    assert not is_fresh({"fetched_at": "2026-07-30T00:00:00Z"}, CACHE_TTL_SECONDS)
+def test_fresh_cache_is_served_without_an_api_call(isolate) -> None:
+    targets._write_cache(["dns01"])
+    assert get_target_names(WsshConfig()) == ["dns01"]
 
 
-def test_round_trip_stamps_the_payload(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("wssh.cache.default_cache_dir", lambda: tmp_path)
-    write_cache("targets.json", {"names": ["dns01"]})
-    cached = read_cache("targets.json")
-    assert cached["names"] == ["dns01"]
-    assert is_fresh(cached, CACHE_TTL_SECONDS)
+def test_stale_cache_refetches_and_restamps(monkeypatch, isolate) -> None:
+    write_raw(isolate, {"names": ["old"], "fetched_at": time.time() - CACHE_TTL_SECONDS - 1})
+    monkeypatch.setattr(targets, "fetch_ssh_target_names", lambda config: ["dns01", "dns01"])
+    assert get_target_names(WsshConfig()) == ["dns01", "dns01"]
+    assert get_target_names(WsshConfig()) == ["dns01"]  # deduped on the way in
 
 
-def test_unreadable_cache_is_a_miss_not_an_error(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("wssh.cache.default_cache_dir", lambda: tmp_path)
-    (tmp_path / "targets.json").write_text("{not json")
-    assert read_cache("targets.json") == {}
+def test_cache_only_serves_a_stale_cache_rather_than_fetching(isolate) -> None:
+    # Completion hooks take whatever is on disk — a legacy ISO stamp reads as
+    # stale, but the names it holds are still the best answer available.
+    write_raw(isolate, {"names": ["dns01"], "fetched_at": "2026-07-30T00:00:00Z"})
+    assert get_target_names(WsshConfig(), cache_only=True) == ["dns01"]
+
+
+def test_unreadable_cache_is_a_miss_not_an_error(monkeypatch, isolate) -> None:
+    (isolate / "targets.json").write_text("{not json")
+    assert get_target_names(WsshConfig(), cache_only=True) == []
+    monkeypatch.setattr(targets, "fetch_ssh_target_names", lambda config: ["dns01"])
+    assert get_target_names(WsshConfig()) == ["dns01"]
+
+
+def test_unwritable_cache_dir_does_not_break_the_command(monkeypatch, isolate) -> None:
+    # mkdir under a regular file raises NotADirectoryError — stands in for any
+    # cache dir we cannot write to.
+    (isolate / "blocker").write_text("")
+    monkeypatch.setattr("wssh.targets.default_cache_dir", lambda: isolate / "blocker" / "cache")
+    monkeypatch.setattr(targets, "fetch_ssh_target_names", lambda config: ["dns01"])
+    assert get_target_names(WsshConfig()) == ["dns01"]

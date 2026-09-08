@@ -37,11 +37,11 @@ def normalize_email(raw: str, domain: str) -> str:
 
 
 def prompt_connection_settings(config: WsshConfig) -> None:
-    """Collect Warpgate host, port, and optional domains for email / server FQDNs."""
-    env_host = os.environ.get("WSSH_HOST", "").strip()
-    env_domain = os.environ.get("WSSH_DOMAIN", "").strip()
-    env_server_domain = os.environ.get("WSSH_SERVER_DOMAIN", "").strip()
+    """Collect Warpgate host, port, and optional domains for email / server FQDNs.
 
+    Every default here comes from ``config`` alone — ``load_config`` has already
+    folded WSSH_HOST, WSSH_PORT, WSSH_DOMAIN, and WSSH_SERVER_DOMAIN in.
+    """
     console.print("\n[bold blue]Warpgate server[/bold blue]")
     console.print(
         "[dim]Hostname of your Warpgate bastion (SSH and HTTPS use the same host).[/dim]"
@@ -49,45 +49,40 @@ def prompt_connection_settings(config: WsshConfig) -> None:
     while True:
         host = Prompt.ask(
             "Warpgate host",
-            default=env_host or config.host or "",
-            show_default=bool(env_host or config.host),
+            default=config.host or "",
+            show_default=bool(config.host),
         ).strip()
         if host:
             config.host = host
             break
         console.print("[red]Host is required[/red]")
 
-    port_default = config.port
-    if env_port := os.environ.get("WSSH_PORT", "").strip():
-        port_default = int(env_port)
     port_raw = Prompt.ask(
         "Warpgate SSH port",
-        default=str(port_default),
+        default=str(config.port),
         show_default=True,
     ).strip()
-    config.port = int(port_raw) if port_raw else port_default
+    config.port = int(port_raw) if port_raw else config.port
 
     console.print(
         "\n[dim]Optional: email domain appended when you enter a username without @ "
         "(leave blank to require a full email).[/dim]"
     )
-    domain = Prompt.ask(
+    config.domain = Prompt.ask(
         "Email domain",
-        default=env_domain or config.domain or "",
-        show_default=bool(env_domain or config.domain),
+        default=config.domain or "",
+        show_default=bool(config.domain),
     ).strip()
-    config.domain = domain
 
     console.print(
         "\n[dim]Optional: DNS suffix for short server names in "
         "[bold]wssh setup-server[/bold] (e.g. dns01 → dns01.suffix).[/dim]"
     )
-    server_domain = Prompt.ask(
+    config.server_domain = Prompt.ask(
         "Server domain suffix",
-        default=env_server_domain or config.server_domain or "",
-        show_default=bool(env_server_domain or config.server_domain),
+        default=config.server_domain or "",
+        show_default=bool(config.server_domain),
     ).strip()
-    config.server_domain = server_domain
 
 
 def prompt_email(config: WsshConfig) -> str:

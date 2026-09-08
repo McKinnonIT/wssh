@@ -23,9 +23,8 @@ DIR_RECORD = json.dumps({"url": "file:///home/sam/wssh", "dir_info": {}})
 
 
 @pytest.fixture(autouse=True)
-def isolate(monkeypatch, tmp_path):
-    """Never touch the real cache, the network, or the user's environment."""
-    monkeypatch.setattr("wssh.cache.default_cache_dir", lambda: tmp_path)
+def isolate(monkeypatch):
+    """Never touch the network or the user's environment."""
     monkeypatch.delenv("WSSH_NO_UPDATE_CHECK", raising=False)
     monkeypatch.delenv("WSSH_REPO", raising=False)
     monkeypatch.setattr(

@@ -4,13 +4,52 @@ from __future__ import annotations
 
 import difflib
 import ipaddress
+import json
+import time
+from pathlib import Path
 
-from wssh.cache import is_fresh, read_cache, write_cache
-from wssh.config import WsshConfig
+from wssh.config import WsshConfig, default_cache_dir
 from wssh.warpgate import WarpgateClient
 
-CACHE_NAME = "targets.json"
 CACHE_TTL_SECONDS = 24 * 3600
+
+
+def _cache_file() -> Path:
+    return default_cache_dir() / "targets.json"
+
+
+def _read_cache() -> dict:
+    """Cached payload, or empty when missing, unreadable, or malformed.
+
+    This is a convenience copy of something Warpgate can be asked for again, so
+    a broken cache is never an error — it is a miss.
+    """
+    try:
+        data = json.loads(_cache_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _is_fresh(cached: dict) -> bool:
+    """Pre-0.2 caches stored an ISO string in ``fetched_at`` — those read as stale."""
+    try:
+        return time.time() - float(cached["fetched_at"]) < CACHE_TTL_SECONDS
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _write_cache(names: list[str]) -> None:
+    """Stamp and store. A read-only cache dir must not break the command."""
+    path = _cache_file()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"names": names, "fetched_at": time.time()}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
 
 def fetch_ssh_target_names(config: WsshConfig) -> list[str]:
@@ -25,12 +64,12 @@ def get_target_names(
     force_refresh: bool = False,
     cache_only: bool = False,
 ) -> list[str]:
-    cached = read_cache(CACHE_NAME)
-    if cache_only or (not force_refresh and is_fresh(cached, CACHE_TTL_SECONDS)):
+    cached = _read_cache()
+    if cache_only or (not force_refresh and _is_fresh(cached)):
         return list(cached.get("names", []))
 
     names = fetch_ssh_target_names(config)
-    write_cache(CACHE_NAME, {"names": sorted(set(names))})
+    _write_cache(sorted(set(names)))
     return names
 
 
