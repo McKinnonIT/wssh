@@ -29,3 +29,21 @@ default_ssh_port: 22
 # Organization preset: ship the non-secret keys above (host, port, domain,
 # server_domain, default_ssh_*) as a shared file. Never include user, api_token,
 # or admin_api_token — `wssh setup` fills those in per person.
+
+# ---------------------------------------------------------------------------
+# Environment variables — these override anything set above.
+#
+#   WSSH_CONFIG               Path to this file
+#   WSSH_HOST                 Warpgate bastion hostname
+#   WSSH_PORT                 Warpgate SSH port (default 2222)
+#   WSSH_DOMAIN               Appended to usernames entered without @
+#   WSSH_SERVER_DOMAIN        DNS suffix for `wssh setup-server` short names
+#   WSSH_API_TOKEN            User API token
+#   WSSH_ADMIN_API_TOKEN      Admin token for setup-server (falls back to WSSH_API_TOKEN)
+#   WSSH_WARPGATE_CLIENT_KEYS Newline-separated client public keys (offline bootstrap)
+#   WSSH_REPO                 Git repo `wssh update` and install.sh pull from
+#   WSSH_NO_UPDATE_CHECK      Silence the update notice and the `wssh version` check
+#   WSSH_TERM                 TERM sent to hosts lacking your terminal's terminfo
+#                             (Ghostty, Kitty). Default xterm-256color; set empty
+#                             to send your real TERM
+# ---------------------------------------------------------------------------
