@@ -12,6 +12,8 @@ from typing import Literal
 
 from wssh.config import WsshConfig
 from wssh.ssh_key import find_public_key, private_key_path
+from wssh.targets import get_target_names, suggest_targets
+from wssh.warpgate import WarpgateApiError
 
 DirectSshProbe = Literal["ok", "timeout", "unreachable", "auth", "host_key"]
 
@@ -294,6 +296,39 @@ def _scp_between(
         return code
 
 
+def _unknown_target_message(name: str, known: list[str]) -> str:
+    """Why Warpgate will not recognise this spec, and the nearest thing that would."""
+    if "@" in name:
+        # Warpgate chooses the SSH user from the target, so a user@host spec
+        # cannot be honoured — it gets sent as a username and comes back as a
+        # bare "Permission denied", which names none of this.
+        bare = name.rpartition("@")[2]
+        fix = f"use '{bare}:'" if bare in known else "use the target name on its own"
+        return (
+            f"'{name}' is not a Warpgate target — {fix}. "
+            "Warpgate picks the SSH user itself, so user@host is never part of the path."
+        )
+    matches = suggest_targets(name, known)
+    hint = f" Did you mean {matches[0]}?" if matches else ""
+    return f"No target '{name}' in Warpgate.{hint}"
+
+
+def _reject_unknown_targets(config: WsshConfig, targets: set[str]) -> str | None:
+    """The first target Warpgate will not recognise, explained. None when all are fine.
+
+    Silent when the target list cannot be read at all: a cold cache and an
+    unreachable API must never be the reason a copy refuses to run.
+    """
+    try:
+        known = get_target_names(config)
+    except WarpgateApiError:
+        return None
+    if not known:
+        return None
+    unknown = [name for name in sorted(targets) if name not in known]
+    return _unknown_target_message(unknown[0], known) if unknown else None
+
+
 def run_scp(config: WsshConfig, args: list[str]) -> int:
     """scp with ``target:path`` in place of ``host:path``."""
     if not config.host or not config.user:
@@ -312,6 +347,9 @@ def run_scp(config: WsshConfig, args: list[str]) -> int:
 
     if not targets:
         print("Both paths are local — plain scp already does that", file=sys.stderr)
+        return 1
+    if problem := _reject_unknown_targets(config, targets):
+        print(problem, file=sys.stderr)
         return 1
     if len(targets) == 1:
         rewritten = [*flags, *(_for_scp(config, p) for p in paths)]

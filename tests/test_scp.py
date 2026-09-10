@@ -1,9 +1,19 @@
 from pathlib import Path
 
+import pytest
+
 from wssh.config import WsshConfig
 from wssh.connect import _split_scp_args, run_scp, split_remote
+from wssh.warpgate import WarpgateApiError
 
 CONFIG = WsshConfig(user="sam@mckinnonsc.vic.edu.au", host="ssh.mckinnon.tech", port=2222)
+KNOWN = ["a01", "b01", "c01", "dns01", "docker02", "docker04", "fms03"]
+
+
+@pytest.fixture(autouse=True)
+def known_targets(monkeypatch):
+    """Never read the developer's own target cache to decide what a test target is."""
+    monkeypatch.setattr("wssh.connect.get_target_names", lambda config, **k: list(KNOWN))
 
 
 def _record(monkeypatch) -> list[list[str]]:
@@ -97,3 +107,39 @@ def test_two_local_paths_is_refused(monkeypatch) -> None:
     calls = _record(monkeypatch)
     assert run_scp(CONFIG, ["/tmp/a", "/tmp/b"]) == 1
     assert not calls
+
+
+def test_user_at_target_is_named_as_the_mistake(monkeypatch, capsys) -> None:
+    """Warpgate reads the username as the target, so user@target used to come back
+    as a bare 'Permission denied' naming neither problem."""
+    calls = _record(monkeypatch)
+    assert run_scp(CONFIG, ["-r", "sysadmin@fms03:/opt/db/", "."]) == 1
+    assert not calls, "no point connecting — Warpgate cannot honour a user in the spec"
+    err = capsys.readouterr().err
+    assert "sysadmin@fms03" in err and "use 'fms03:'" in err
+
+
+def test_user_at_unknown_host_still_explains_the_rule(monkeypatch, capsys) -> None:
+    _record(monkeypatch)
+    assert run_scp(CONFIG, ["root@nowhere:/etc/hosts", "."]) == 1
+    err = capsys.readouterr().err
+    assert "target name on its own" in err
+
+
+def test_typo_in_a_target_is_suggested(monkeypatch, capsys) -> None:
+    calls = _record(monkeypatch)
+    assert run_scp(CONFIG, ["dns0:/etc/hosts", "."]) == 1
+    assert not calls
+    assert "Did you mean dns01?" in capsys.readouterr().err
+
+
+def test_unreadable_target_list_never_blocks_a_copy(monkeypatch) -> None:
+    """A cold cache and an unreachable API must not be why a copy refuses to run."""
+    calls = _record(monkeypatch)
+
+    def unreachable(config, **kwargs):
+        raise WarpgateApiError("connection refused")
+
+    monkeypatch.setattr("wssh.connect.get_target_names", unreachable)
+    assert run_scp(CONFIG, ["-r", "whatever:/etc/hosts", "."]) == 0
+    assert len(calls) == 1
