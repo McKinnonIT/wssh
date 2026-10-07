@@ -49,10 +49,10 @@ def remove_completion_block(path: Path) -> bool:
 def completion_block(shell: str) -> str:
     # Only two scripts exist; anything else (fish, sh) gets the bash one, as before.
     shell = "zsh" if shell == "zsh" else "bash"
-    # zsh only: compinit must already have run, and it usually has not by the time
-    # a block appended to the end of .zshrc is read.
+    # zsh only: the emitted script runs compinit itself if it has not run yet,
+    # so this block works wherever it lands in .zshrc.
     ordering_note = (
-        "# Place this block after 'compinit' in .zshrc if completion fails.\n"
+        "# Safe anywhere in .zshrc: the script runs compinit itself if needed.\n"
         if shell == "zsh"
         else ""
     )

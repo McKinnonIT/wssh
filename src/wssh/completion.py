@@ -118,5 +118,8 @@ _wssh() {{
     esac
 }}
 
+if (( ! $+functions[compdef] )); then
+  autoload -Uz compinit && compinit -i
+fi
 compdef _wssh wssh
 """
