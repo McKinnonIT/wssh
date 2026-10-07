@@ -1,3 +1,8 @@
+import shutil
+import subprocess
+
+import pytest
+
 from wssh.completion import bash_completion, command_tree, zsh_completion
 
 
@@ -6,6 +11,28 @@ def test_zsh_completion_registers_compdef_not_invoke() -> None:
     assert "compdef _wssh wssh" in script
     assert '_wssh "$@"' not in script
     assert "#compdef wssh" in script
+
+
+@pytest.mark.parametrize("preamble", ["", "autoload -Uz compinit && compinit -i; "])
+def test_zsh_completion_evals_cleanly(tmp_path, preamble: str) -> None:
+    """A shell with no compinit of its own must not print 'command not found: compdef'.
+
+    The whole point of the guard, so it is checked against a real zsh rather
+    than by matching strings.
+    """
+    zsh = shutil.which("zsh")
+    if zsh is None:
+        pytest.skip("zsh not installed")
+    script = tmp_path / "_wssh"
+    script.write_text(zsh_completion(), encoding="utf-8")
+    result = subprocess.run(
+        [zsh, "-f", "-ic", f'{preamble}eval "$(cat {script})"; echo ok'],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().endswith("ok")
+    assert result.stderr == "", result.stderr
 
 
 def test_command_tree_matches_registered_cli_commands() -> None:
