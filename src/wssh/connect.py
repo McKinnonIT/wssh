@@ -66,7 +66,7 @@ def classify_ssh_failure(stderr: str) -> str:
 
 
 def bastion_destination(config: WsshConfig, target: str) -> str:
-    return f"{config.user}:{target}@{config.host}"
+    return f"{config.user}:{target}@{config.bastion_ssh_host}"
 
 
 def _ssh_base_cmd(config: WsshConfig, *, batch_mode: bool = False) -> list[str]:
@@ -246,7 +246,7 @@ def _scp_cmd(config: WsshConfig, target: str, args: list[str]) -> list[str]:
 def _for_scp(config: WsshConfig, arg: str) -> str:
     """Rewrite ``target:path`` to the bastion's own ``host:path``."""
     spec = split_remote(arg)
-    return f"{config.host}:{spec[1]}" if spec else arg
+    return f"{config.bastion_ssh_host}:{spec[1]}" if spec else arg
 
 
 def _scp_between(

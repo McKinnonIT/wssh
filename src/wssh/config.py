@@ -11,11 +11,16 @@ import yaml
 
 DEFAULT_WARPGATE_PORT = 2222
 
+# SSH moved off Pangolin to its own name (2026-10); the web UI/API stays on the old one.
+# ponytail: team-only hardcode, drop once every config has ssh_host.
+SSH_HOST_MIGRATION = ("ssh.mckinnon.tech", "wssh.mckinnon.tech")
+
 
 @dataclass
 class WsshConfig:
     user: str = ""
     host: str = ""
+    ssh_host: str = ""
     port: int = DEFAULT_WARPGATE_PORT
     domain: str = ""
     server_domain: str = ""
@@ -24,6 +29,11 @@ class WsshConfig:
     warpgate_client_keys: list[str] = field(default_factory=list)
     default_ssh_user: str = "root"
     default_ssh_port: int = 22
+
+    @property
+    def bastion_ssh_host(self) -> str:
+        """Host for SSH/scp; lets SSH bypass the HTTPS proxy in front of ``host``."""
+        return self.ssh_host or self.host
 
     @property
     def user_api_base(self) -> str:
@@ -66,6 +76,8 @@ def apply_env_overrides(config: WsshConfig) -> WsshConfig:
     """Apply WSSH_* environment variables over file-backed settings."""
     if host := os.environ.get("WSSH_HOST", "").strip():
         config.host = host
+    if ssh_host := os.environ.get("WSSH_SSH_HOST", "").strip():
+        config.ssh_host = ssh_host
     if port := os.environ.get("WSSH_PORT", "").strip():
         config.port = int(port)
     if domain := os.environ.get("WSSH_DOMAIN", "").strip():
@@ -94,7 +106,12 @@ def load_config(path: Path | None = None) -> WsshConfig:
         data = yaml.safe_load(fh) or {}
     if not isinstance(data, dict):
         raise ValueError(f"Invalid config format in {config_path}")
-    return apply_env_overrides(WsshConfig.from_dict(data))
+    config = WsshConfig.from_dict(data)
+    old_host, new_ssh_host = SSH_HOST_MIGRATION
+    if config.host == old_host and not config.ssh_host:
+        config.ssh_host = new_ssh_host
+        save_config(config, config_path)  # before env overrides, so they never get persisted
+    return apply_env_overrides(config)
 
 
 def save_config(config: WsshConfig, path: Path | None = None) -> Path:
