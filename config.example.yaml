@@ -8,6 +8,9 @@ user: alice@example.com
 host: bastion.example.com
 port: 2222
 
+# Optional: different hostname for SSH/scp only (API and web stay on host)
+# ssh_host: ssh-direct.example.com
+
 # Optional: append to usernames entered without @ during setup
 domain: example.com
 
@@ -35,6 +38,7 @@ default_ssh_port: 22
 #
 #   WSSH_CONFIG               Path to this file
 #   WSSH_HOST                 Warpgate bastion hostname
+#   WSSH_SSH_HOST             Hostname for SSH/scp only (defaults to WSSH_HOST)
 #   WSSH_PORT                 Warpgate SSH port (default 2222)
 #   WSSH_DOMAIN               Appended to usernames entered without @
 #   WSSH_SERVER_DOMAIN        DNS suffix for `wssh setup-server` short names
