@@ -310,3 +310,38 @@ def test_failed_install_returns_its_exit_code(monkeypatch, installs) -> None:
     monkeypatch.setattr(update, "remote_commit", lambda *a: REMOTE)
     monkeypatch.setattr(update.subprocess, "call", lambda cmd: 1)
     assert update.run_update() == 1
+
+
+def test_shimmer_frame_preserves_the_line(monkeypatch) -> None:
+    """Every frame is the same text — only the styling moves."""
+    from wssh.update import _notice_parts, _shimmer_frame
+
+    parts = _notice_parts("6874040", "8f7804d")
+    plain = "".join(text for text, _ in parts)
+    for pos in (-20, 0, 12, 999):
+        assert _shimmer_frame(parts, pos).plain == "\n" + plain
+    assert _shimmer_frame(parts, 0, flash=True).plain == "\n" + plain
+
+
+def test_shimmer_glint_moves_with_pos() -> None:
+    """The bright core sits where pos says, and nowhere else."""
+    from wssh.update import _CORE, _notice_parts, _shimmer_frame
+
+    parts = _notice_parts("6874040", "8f7804d")
+
+    def bright(pos: int) -> list[int]:
+        frame = _shimmer_frame(parts, pos)
+        return [s.start for s in frame.spans if s.style == "bold white"]
+
+    assert bright(0) == [1, 2, 3][:_CORE]  # offset by the leading newline
+    assert bright(10) == [11, 12, 13][:_CORE]
+    assert bright(-99) == []  # offscreen: nothing lit
+
+
+def test_animation_disabled_reads_env(monkeypatch) -> None:
+    from wssh.update import animation_disabled
+
+    monkeypatch.delenv("WSSH_NO_ANIMATION", raising=False)
+    assert animation_disabled() is False
+    monkeypatch.setenv("WSSH_NO_ANIMATION", "1")
+    assert animation_disabled() is True
