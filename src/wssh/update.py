@@ -12,18 +12,25 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
 from importlib.metadata import PackageNotFoundError, distribution, version
+from pathlib import Path
 
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
+from wssh.config import default_cache_dir
+
 DEFAULT_REPO = "https://github.com/McKinnonIT/wssh.git"
 LS_REMOTE_TIMEOUT = 5
+UNREACHABLE_WARN_INTERVAL = 24 * 3600
+# The URL that last answered, which is not always the one pip recorded.
+_reachable_url: str | None = None
 
 console = Console()
 # The notice is decoration around the real output. stdout belongs to the command
@@ -94,8 +101,24 @@ def repo_url() -> str:
 # --------------------------------------------------------------------------- #
 
 
-def remote_commit(url: str | None = None) -> str | None:
-    """Commit at the tip of the remote's default branch. None if unreachable.
+def alternate_urls(url: str) -> list[str]:
+    """The same GitHub repo addressed the other way round: https <-> ssh.
+
+    pip records the URL a copy was installed from, and that URL stops working
+    when the repo turns private and the machine's credential is the other kind.
+    The repo did not move — only the transport that can reach it did.
+    """
+    https = re.match(r"https://github\.com/(.+?)(?:\.git)?$", url)
+    if https:
+        return [f"ssh://git@github.com/{https.group(1)}.git"]
+    ssh = re.match(r"(?:ssh://)?git@github\.com[:/](.+?)(?:\.git)?$", url)
+    if ssh:
+        return [f"https://github.com/{ssh.group(1)}.git"]
+    return []
+
+
+def _ls_remote(url: str) -> str | None:
+    """Commit at the tip of ``url``'s default branch. None if unreachable.
 
     Both prompt-suppressing variables are load-bearing: a repo that turns
     private, or an SSH remote with a passphrase-protected key, would otherwise
@@ -108,7 +131,7 @@ def remote_commit(url: str | None = None) -> str | None:
     }
     try:
         result = subprocess.run(
-            ["git", "ls-remote", url or repo_url(), "HEAD"],
+            ["git", "ls-remote", url, "HEAD"],
             capture_output=True,
             text=True,
             timeout=LS_REMOTE_TIMEOUT,
@@ -121,6 +144,21 @@ def remote_commit(url: str | None = None) -> str | None:
         return None
     fields = result.stdout.split()
     return fields[0] if fields else None
+
+
+def remote_commit(url: str | None = None) -> str | None:
+    """Commit at the tip of the remote, over whichever transport can reach it.
+
+    Remembers the URL that answered, so an update installs from the same place
+    the check read — not from the recorded one that just failed.
+    """
+    global _reachable_url
+    for candidate in [url or repo_url()] if url else [repo_url(), *alternate_urls(repo_url())]:
+        commit = _ls_remote(candidate)
+        if commit:
+            _reachable_url = candidate
+            return commit
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -234,6 +272,30 @@ def _shimmer(parts: list[tuple[str, str]]) -> None:
         live.update(rest)
 
 
+def _unreachable_stamp() -> Path:
+    return default_cache_dir() / "update-unreachable"
+
+
+def _warn_unreachable_once_a_day() -> None:
+    """Silence is how a broken update check hid for weeks. Say it, but not hourly."""
+    stamp = _unreachable_stamp()
+    try:
+        if time.time() - stamp.stat().st_mtime < UNREACHABLE_WARN_INTERVAL:
+            return
+    except OSError:
+        pass  # never warned, or the cache is unreadable: warn now
+    try:
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.touch()
+    except OSError:
+        pass  # a read-only cache must not cost the warning
+    err_console.print(
+        f"\n[yellow]Cannot check for wssh updates[/yellow] [dim]({repo_url()})[/dim]\n"
+        "[dim]The repo is private and this machine has no credential for it. Fix with "
+        "[bold]gh auth login && gh auth setup-git[/bold], or add an SSH key to GitHub.[/dim]"
+    )
+
+
 def maybe_notify_update() -> None:
     """Print a one-line update notice. Never raises, never touches stdout."""
     if not (sys.stderr.isatty() and sys.stdout.isatty()):
@@ -242,8 +304,12 @@ def maybe_notify_update() -> None:
         # there greets every new shell, from a command the user never typed.
         return  # piped, captured, or scripted: nobody is reading a banner
     try:
+        if check_disabled() or not installed_commit():
+            return
         remote = check_for_update()
         if not remote:
+            if not remote_commit():
+                _warn_unreachable_once_a_day()
             return
         local = installed_commit() or "?"
         parts = _notice_parts(local[:7], remote[:7])
@@ -306,7 +372,7 @@ def update_command() -> list[str]:
     pyproject rarely changes between commits, so pip would otherwise decide the
     requirement is already satisfied and install nothing.
     """
-    spec = f"git+{repo_url()}"
+    spec = f"git+{_reachable_url or repo_url()}"
     if shutil.which("pipx"):
         return ["pipx", "install", "--force", spec]
     return [sys.executable, "-m", "pip", "install", "--force-reinstall", spec]
