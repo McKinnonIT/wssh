@@ -14,12 +14,20 @@ wssh dns01
 
 ## Install
 
+The repo is private, so the install needs a GitHub credential — **either** an SSH key **or**
+an authenticated `gh`. Clone with the one you have, and `install.sh` picks the same one to
+install from:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/McKinnonIT/wssh/main/install.sh | bash
+git clone git@github.com:McKinnonIT/wssh.git      # SSH key
+gh repo clone McKinnonIT/wssh                     # or: gh CLI
+bash wssh/install.sh
 wssh setup
 ```
 
-The installer adds Python, pipx, and OpenSSH where they are missing (Homebrew, apt, dnf, or pacman), then installs `wssh` with pipx.
+The installer adds Python, pipx, and OpenSSH where they are missing (Homebrew, apt, dnf, or pacman), then installs `wssh` with pipx. With neither credential it stops and names both options. On the `gh` path it also runs `gh auth setup-git`, so `wssh update` keeps working afterwards.
+
+McKinnon staff: use [wssh-bootstrap](https://github.com/McKinnonIT/wssh-bootstrap) instead — same install, plus the org defaults.
 
 `wssh setup` asks for your Warpgate host, username, and SSH key, signs you in, and installs shell tab completion. Settings are saved to `~/.wssh/config.yaml` (mode `0600`).
 
