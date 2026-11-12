@@ -15,9 +15,12 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from importlib.metadata import PackageNotFoundError, distribution, version
 
 from rich.console import Console
+from rich.live import Live
+from rich.text import Text
 
 DEFAULT_REPO = "https://github.com/McKinnonIT/wssh.git"
 LS_REMOTE_TIMEOUT = 5
@@ -158,6 +161,79 @@ def check_for_update() -> str | None:
     return remote
 
 
+# --------------------------------------------------------------------------- #
+# The notice itself
+# --------------------------------------------------------------------------- #
+
+# A glint drawn along the line four times, each pass at the same unhurried pace —
+# a blade turning in the light, not one being yanked out. Costs ~2.8s, which is
+# why it only ever runs when there is something to say and someone to see it.
+SHIMMER_SECONDS = 0.62
+SHIMMER_PASSES = (SHIMMER_SECONDS,) * 4
+SHIMMER_PAUSE = 0.07
+SHIMMER_FPS = 60
+_CORE, _HOT, _WARM = 3, 4, 8  # glint width, then the trail behind it
+
+
+def animation_disabled() -> bool:
+    """WSSH_NO_ANIMATION — for anyone who wants the notice without the wait."""
+    return bool(os.environ.get("WSSH_NO_ANIMATION", "").strip())
+
+
+def _notice_parts(local: str, remote: str) -> list[tuple[str, str]]:
+    """The notice as (text, base style) runs, so one line serves both renderers."""
+    return [
+        ("Update available ", "yellow"),
+        (f"({local} → {remote})", "dim"),
+        (" — run ", "yellow"),
+        ("wssh update", "bold yellow"),
+    ]
+
+
+def _ease(t: float) -> float:
+    """Ease-in-out cubic: slow at both ends, quick through the middle."""
+    return 4 * t**3 if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2
+
+
+def _shimmer_frame(parts: list[tuple[str, str]], pos: float, *, flash: bool = False) -> Text:
+    """One frame: the line with the glint and its trail centred on ``pos``."""
+    out = Text("\n")
+    index = 0
+    for text, base in parts:
+        for char in text:
+            offset = index - pos
+            if flash:
+                style = "bold yellow" if base == "dim" else "bold white"
+            elif 0 <= offset < _CORE:
+                style = "bold white"
+            elif -_HOT <= offset < 0:
+                style = "bold yellow"
+            elif -_WARM <= offset < -_HOT:
+                style = "yellow"
+            else:
+                style = base
+            out.append(char, style=style)
+            index += 1
+    return out
+
+
+def _shimmer(parts: list[tuple[str, str]]) -> None:
+    """Draw the glint across the notice, then leave the line sitting there."""
+    width = sum(len(text) for text, _ in parts)
+    span = width + _WARM + _CORE
+    rest = _shimmer_frame(parts, -span)  # glint offscreen: the plain line
+    with Live(rest, console=err_console, refresh_per_second=SHIMMER_FPS) as live:
+        for seconds in SHIMMER_PASSES:
+            started = time.monotonic()
+            while (elapsed := time.monotonic() - started) < seconds:
+                live.update(_shimmer_frame(parts, -_WARM + _ease(elapsed / seconds) * span))
+                time.sleep(1 / SHIMMER_FPS)
+            time.sleep(SHIMMER_PAUSE)
+        live.update(_shimmer_frame(parts, 0, flash=True))  # the blade catches the light
+        time.sleep(SHIMMER_PAUSE)
+        live.update(rest)
+
+
 def maybe_notify_update() -> None:
     """Print a one-line update notice. Never raises, never touches stdout."""
     if not (sys.stderr.isatty() and sys.stdout.isatty()):
@@ -170,10 +246,14 @@ def maybe_notify_update() -> None:
         if not remote:
             return
         local = installed_commit() or "?"
-        err_console.print(
-            f"\n[yellow]Update available[/yellow] "
-            f"[dim]({local[:7]} → {remote[:7]})[/dim] — run [bold]wssh update[/bold]"
-        )
+        parts = _notice_parts(local[:7], remote[:7])
+        if animation_disabled():
+            line = Text("\n")
+            for text, style in parts:
+                line.append(text, style=style)
+            err_console.print(line)
+        else:
+            _shimmer(parts)
     except Exception:
         # A cosmetic version check must never be the reason a connection fails.
         return

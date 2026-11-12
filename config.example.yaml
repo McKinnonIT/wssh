@@ -47,6 +47,7 @@ default_ssh_port: 22
 #   WSSH_WARPGATE_CLIENT_KEYS Newline-separated client public keys (offline bootstrap)
 #   WSSH_REPO                 Git repo `wssh update` and install.sh pull from
 #   WSSH_NO_UPDATE_CHECK      Silence the update notice and the `wssh version` check
+#   WSSH_NO_ANIMATION         Print the update notice plainly, without the shimmer
 #   WSSH_TERM                 TERM sent to hosts lacking your terminal's terminfo
 #                             (Ghostty, Kitty). Default xterm-256color; set empty
 #                             to send your real TERM
