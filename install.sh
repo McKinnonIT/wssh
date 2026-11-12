@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Install wssh and dependencies.
 #
-#   curl -fsSL https://raw.githubusercontent.com/McKinnonIT/wssh/main/install.sh | bash
+#   git clone git@github.com:McKinnonIT/wssh.git && bash wssh/install.sh
+#   gh repo clone McKinnonIT/wssh -- --depth 1 && bash wssh/install.sh
+#
+# The repo is private, so the install needs a GitHub credential. Either an SSH
+# key or an authenticated `gh` works — whichever this machine has is picked.
 #
 # Override repo: WSSH_REPO=https://github.com/you/wssh.git bash install.sh
 
 set -euo pipefail
 
-WSSH_REPO="${WSSH_REPO:-https://github.com/McKinnonIT/wssh.git}"
-WSSH_GIT_SPEC="git+${WSSH_REPO}"
+WSSH_REPO="${WSSH_REPO:-}"
+WSSH_SSH_URL="ssh://git@github.com/McKinnonIT/wssh.git"
+WSSH_HTTPS_URL="https://github.com/McKinnonIT/wssh.git"
 
 err() {
     echo "wssh install: $*" >&2
@@ -57,6 +62,42 @@ ensure_python() {
         || err "Python 3.10+ is required."
 }
 
+can_read_repo() {
+    # Never prompt: a missing credential must fail fast, not stop on a password
+    # nobody can see when this runs from a pipe.
+    GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -oBatchMode=yes" \
+        git ls-remote "$1" HEAD >/dev/null 2>&1
+}
+
+resolve_repo() {
+    # The repo is private, so the URL that works depends on the credential this
+    # machine has: an SSH key, or a gh token. Try SSH first — it needs no setup
+    # step — then gh. An explicit WSSH_REPO wins: pointing at a fork means it.
+    if [ -n "$WSSH_REPO" ]; then
+        return 0
+    fi
+    need_cmd git || err "git is required to install from the repo. Install it and re-run."
+
+    if can_read_repo "$WSSH_SSH_URL"; then
+        WSSH_REPO="$WSSH_SSH_URL"
+        return 0
+    fi
+    if need_cmd gh && gh auth status >/dev/null 2>&1; then
+        # Teaches git to use the gh token for github.com, so `wssh update` keeps
+        # working later from a plain HTTPS URL.
+        gh auth setup-git >/dev/null 2>&1 || true
+        if can_read_repo "$WSSH_HTTPS_URL"; then
+            WSSH_REPO="$WSSH_HTTPS_URL"
+            return 0
+        fi
+    fi
+
+    err "no GitHub credential can reach McKinnonIT/wssh (it is private).
+  Set up ONE of these, then re-run:
+    SSH key:  https://github.com/settings/keys  (test: ssh -T git@github.com)
+    gh CLI:   gh auth login                     (test: gh auth status)"
+}
+
 ensure_pipx() {
     if need_cmd pipx; then
         return 0
@@ -76,9 +117,10 @@ main() {
     install_system_packages
     ensure_python
     ensure_pipx
+    resolve_repo
 
     echo "Installing wssh from ${WSSH_REPO}…"
-    pipx install --force "$WSSH_GIT_SPEC"
+    pipx install --force "git+${WSSH_REPO}"
 
     echo ""
     echo "Done. Next step:"
