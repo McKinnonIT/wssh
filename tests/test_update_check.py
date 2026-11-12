@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 
@@ -345,3 +346,54 @@ def test_animation_disabled_reads_env(monkeypatch) -> None:
     assert animation_disabled() is False
     monkeypatch.setenv("WSSH_NO_ANIMATION", "1")
     assert animation_disabled() is True
+
+
+def test_alternate_urls_round_trip() -> None:
+    """The recorded URL and its other-transport twin name the same repo."""
+    from wssh.update import alternate_urls
+
+    https = "https://github.com/McKinnonIT/wssh.git"
+    ssh = "ssh://git@github.com/McKinnonIT/wssh.git"
+    assert alternate_urls(https) == [ssh]
+    assert alternate_urls("git@github.com:McKinnonIT/wssh.git") == [https]
+    assert alternate_urls(ssh) == [https]
+    assert alternate_urls("https://gitlab.com/x/y.git") == []  # not GitHub: no twin
+
+
+def test_remote_commit_falls_back_to_the_other_transport(monkeypatch) -> None:
+    """A private repo and an HTTPS-recorded install must still find the commit."""
+    import wssh.update as update
+
+    tried: list[str] = []
+
+    def fake_ls_remote(url: str) -> str | None:
+        tried.append(url)
+        return "c0ffee" if url.startswith("ssh://") else None
+
+    monkeypatch.setattr(update, "_ls_remote", fake_ls_remote)
+    monkeypatch.setattr(update, "repo_url", lambda: "https://github.com/McKinnonIT/wssh.git")
+    monkeypatch.setattr(update, "_reachable_url", None)
+
+    assert real_remote_commit() == "c0ffee"
+    assert tried == [
+        "https://github.com/McKinnonIT/wssh.git",
+        "ssh://git@github.com/McKinnonIT/wssh.git",
+    ]
+    # And the install follows the URL that answered, not the one that failed.
+    assert update.update_command()[-1] == "git+ssh://git@github.com/McKinnonIT/wssh.git"
+
+
+def test_unreachable_warning_is_daily_not_hourly(monkeypatch, tmp_path, capsys) -> None:
+    import wssh.update as update
+
+    monkeypatch.setattr(update, "default_cache_dir", lambda: tmp_path)
+    update._warn_unreachable_once_a_day()
+    assert "Cannot check for wssh updates" in capsys.readouterr().err
+
+    update._warn_unreachable_once_a_day()
+    assert capsys.readouterr().err == ""  # same day: silent
+
+    stamp = tmp_path / "update-unreachable"
+    os.utime(stamp, (0, 0))  # a day later
+    update._warn_unreachable_once_a_day()
+    assert "Cannot check for wssh updates" in capsys.readouterr().err
