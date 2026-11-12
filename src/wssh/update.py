@@ -165,10 +165,11 @@ def check_for_update() -> str | None:
 # The notice itself
 # --------------------------------------------------------------------------- #
 
-# A glint drawn along the line, four times, each pass quicker than the last —
-# the way a blade picks up speed once it clears the scabbard. Costs ~2s, which
-# is why it only ever runs when there is something to say and someone to see it.
-SHIMMER_PASSES = (0.62, 0.46, 0.33, 0.24)
+# A glint drawn along the line four times, each pass at the same unhurried pace —
+# a blade turning in the light, not one being yanked out. Costs ~2.8s, which is
+# why it only ever runs when there is something to say and someone to see it.
+SHIMMER_SECONDS = 0.62
+SHIMMER_PASSES = (SHIMMER_SECONDS,) * 4
 SHIMMER_PAUSE = 0.07
 SHIMMER_FPS = 60
 _CORE, _HOT, _WARM = 3, 4, 8  # glint width, then the trail behind it
