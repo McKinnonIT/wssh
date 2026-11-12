@@ -19,6 +19,9 @@ DirectSshProbe = Literal["ok", "timeout", "unreachable", "auth", "host_key"]
 
 DIRECT_SSH_CONNECT_TIMEOUT = 15
 
+# ssh's own exit code for "could not connect"; anything else came from the remote command.
+SSH_CONNECT_FAILURE_EXIT = 255
+
 _UNKNOWN_TARGET = ("unknown target", "no such target", "target not found", "does not exist")
 _AUTH_FAILURE = (
     "permission denied",
