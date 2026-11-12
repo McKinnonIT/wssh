@@ -13,6 +13,7 @@ from wssh.auth import login_interactive, logout
 from wssh.completion import bash_completion, command_tree, zsh_completion
 from wssh.config import default_config_path, load_config
 from wssh.connect import (
+    SSH_CONNECT_FAILURE_EXIT,
     classify_ssh_failure,
     format_ssh_hint,
     run_scp,
@@ -63,6 +64,7 @@ app.add_typer(targets_app, name="targets")
 app.add_typer(credentials_app, name="credentials")
 
 console = Console()
+err_console = Console(stderr=True)
 _state_config_path: Path | None = None
 
 
@@ -325,15 +327,19 @@ def connect(target: str, ssh_args: list[str]) -> int:
             console.print("[dim]Your API token is not valid — run: wssh auth login[/dim]")
 
     code = run_ssh(config, target, ssh_args)
-    if code == 0:
-        return 0
+    # Only 255 is ssh's own "could not connect" — every other code is the remote
+    # command's. Diagnosing those cost a second connection and printed "SSH
+    # connection failed" over the output of a command that had connected fine.
+    if code != SSH_CONNECT_FAILURE_EXIT:
+        return code
 
     _, stdout, stderr = run_ssh_capture(config, target, ["true"])
     kind = classify_ssh_failure(f"{stderr}\n{stdout}")
     if _offer_setup(config, target, kind):
         return run_ssh(config, target, ssh_args)
 
-    console.print(format_ssh_hint(stderr, target=target, stdout=stdout))
+    # stderr: a diagnostic must not land in output the caller is capturing.
+    err_console.print(format_ssh_hint(stderr, target=target, stdout=stdout))
     return code
 
 
