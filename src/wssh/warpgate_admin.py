@@ -138,6 +138,8 @@ class WarpgateAdminClient(ApiClient):
             "host": host,
             "port": port,
             "username": username,
+            # Required on every write; Warpgate rejects a missing/null boolean.
+            "allow_insecure_algos": bool(opts.get("allow_insecure_algos")),
             "auth": opts.get("auth") or {"kind": "PublicKey"},
         }
 
@@ -150,10 +152,15 @@ class WarpgateAdminClient(ApiClient):
         description: str = "",
         existing: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        prior = existing or {}
         return {
             "name": name,
-            "description": description or (existing or {}).get("description") or "",
+            "description": description or prior.get("description") or "",
             "options": self._ssh_options(host, port, username, existing),
+            # Required on every write, so a save never silently clears a gate.
+            "ticket_requests_disabled": bool(prior.get("ticket_requests_disabled")),
+            "ticket_require_approval": bool(prior.get("ticket_require_approval")),
+            "require_approval": bool(prior.get("require_approval")),
         }
 
     def create_ssh_target(
